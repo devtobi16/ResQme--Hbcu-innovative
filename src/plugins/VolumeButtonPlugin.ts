@@ -2,9 +2,12 @@ import { registerPlugin } from '@capacitor/core';
 
 export interface VolumeButtonPlugin {
   isSupported(): Promise<{ supported: boolean }>;
+  startBackgroundService(): Promise<{ started: boolean }>;
+  stopBackgroundService(): Promise<{ stopped: boolean }>;
+  isBackgroundServiceRunning(): Promise<{ running: boolean }>;
   addListener(
     eventName: 'volumeButtonsPressed',
-    listenerFunc: (data: { triggered: boolean; timestamp: number }) => void
+    listenerFunc: (data: { triggered: boolean; timestamp: number; source: string }) => void
   ): Promise<{ remove: () => void }>;
 }
 
