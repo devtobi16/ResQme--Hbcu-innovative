@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { SOSButton } from "@/components/SOSButton";
@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
 import { useVoiceCommand } from "@/hooks/useVoiceCommand";
 import { useOfflineCache } from "@/hooks/useOfflineCache";
+
+const Contacts = lazy(() => import("@/pages/Contacts"));
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState("home");
@@ -271,52 +273,74 @@ const Index = () => {
       )}
 
       <div className={`px-4 py-6 max-w-lg mx-auto ${isAlertActive ? "pt-32" : !isOnline ? "pt-20" : ""}`}>
-        <header className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-secondary/20 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-secondary" />
+        {activeTab === "home" && (
+          <>
+            <header className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-secondary/20 flex items-center justify-center">
+                  <Shield className="w-5 h-5 text-secondary" />
+                </div>
+                <div>
+                  <h1 className="font-display text-xl font-bold text-foreground">ResQMe</h1>
+                  <p className="text-xs text-muted-foreground">Your safety companion</p>
+                </div>
+              </div>
+
+              {/* Voice command toggle */}
+              <VoiceCommandIndicator
+                isListening={isListening}
+                isSupported={isSupported}
+                onToggle={toggleVoiceListening}
+                transcript={transcript}
+              />
+            </header>
+
+            <StatusBar 
+              isLocationEnabled={!!location} 
+              isRecording={isRecording} 
+              isConnected={isOnline} 
+            />
+
+            <div className="flex items-center justify-center my-12">
+              <SOSButton 
+                onTrigger={handleSOSTrigger} 
+                isActive={isAlertActive} 
+                isRecording={isRecording} 
+              />
             </div>
-            <div>
-              <h1 className="font-display text-xl font-bold text-foreground">ResQMe</h1>
-              <p className="text-xs text-muted-foreground">Your safety companion</p>
-            </div>
+
+            <LocationCard
+              latitude={location?.lat || null}
+              longitude={location?.lng || null}
+              accuracy={location?.accuracy || null}
+              isTracking={isAlertActive}
+            />
+
+            {isSupported && (
+              <div className="mt-6 p-4 rounded-2xl bg-card border border-border text-center">
+                <p className="text-sm text-muted-foreground">
+                  💡 Tip: Say <span className="text-secondary font-medium">"ResQMe help"</span> to trigger an alert hands-free
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === "contacts" && (
+          <Suspense fallback={<div className="h-64 flex items-center justify-center text-muted-foreground">Loading...</div>}>
+            <Contacts />
+          </Suspense>
+        )}
+
+        {activeTab === "history" && (
+          <div className="text-center py-12 text-muted-foreground">
+            <p>Alert history coming soon</p>
           </div>
+        )}
 
-          {/* Voice command toggle */}
-          <VoiceCommandIndicator
-            isListening={isListening}
-            isSupported={isSupported}
-            onToggle={toggleVoiceListening}
-            transcript={transcript}
-          />
-        </header>
-
-        <StatusBar 
-          isLocationEnabled={!!location} 
-          isRecording={isRecording} 
-          isConnected={isOnline} 
-        />
-
-        <div className="flex items-center justify-center my-12">
-          <SOSButton 
-            onTrigger={handleSOSTrigger} 
-            isActive={isAlertActive} 
-            isRecording={isRecording} 
-          />
-        </div>
-
-        <LocationCard
-          latitude={location?.lat || null}
-          longitude={location?.lng || null}
-          accuracy={location?.accuracy || null}
-          isTracking={isAlertActive}
-        />
-
-        {isSupported && (
-          <div className="mt-6 p-4 rounded-2xl bg-card border border-border text-center">
-            <p className="text-sm text-muted-foreground">
-              💡 Tip: Say <span className="text-secondary font-medium">"ResQMe help"</span> to trigger an alert hands-free
-            </p>
+        {activeTab === "settings" && (
+          <div className="text-center py-12 text-muted-foreground">
+            <p>Settings coming soon</p>
           </div>
         )}
       </div>
