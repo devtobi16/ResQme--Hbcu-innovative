@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
 import { useVoiceCommand } from "@/hooks/useVoiceCommand";
 import { useOfflineCache } from "@/hooks/useOfflineCache";
+import { useVolumeButtonTrigger } from "@/hooks/useVolumeButtonTrigger";
 
 const Contacts = lazy(() => import("@/pages/Contacts"));
 
@@ -33,17 +34,23 @@ const Index = () => {
   const { isRecording, startRecording, stopRecording, audioBlob } = useAudioRecording();
   const { isOnline, pendingAlerts, cacheAlert, markAsSynced } = useOfflineCache();
 
-  // Voice command handler
-  const handleVoiceAlert = useCallback(() => {
+  // Volume button and voice command handler
+  const handleHardwareTrigger = useCallback(() => {
     if (!isAlertActive && !showCancelWindow) {
       setTriggerType("voice");
       setShowCancelWindow(true);
     }
   }, [isAlertActive, showCancelWindow]);
 
+  // Volume button trigger (Android only via Capacitor)
+  const { isSupported: volumeButtonSupported } = useVolumeButtonTrigger({
+    onTrigger: handleHardwareTrigger,
+    enabled: !isAlertActive && !showCancelWindow,
+  });
+
   const { isListening, isSupported, transcript, startListening, stopListening } = useVoiceCommand({
     wakeWord: "resqme",
-    onWakeWordDetected: handleVoiceAlert,
+    onWakeWordDetected: handleHardwareTrigger,
   });
 
   // Auth check
@@ -316,10 +323,12 @@ const Index = () => {
               isTracking={isAlertActive}
             />
 
-            {isSupported && (
+            {(isSupported || volumeButtonSupported) && (
               <div className="mt-6 p-4 rounded-2xl bg-card border border-border text-center">
                 <p className="text-sm text-muted-foreground">
-                  💡 Tip: Say <span className="text-secondary font-medium">"ResQMe help"</span> to trigger an alert hands-free
+                  💡 Tips: 
+                  {isSupported && <span> Say <span className="text-secondary font-medium">"ResQMe help"</span> to trigger hands-free.</span>}
+                  {volumeButtonSupported && <span> Press <span className="text-secondary font-medium">Vol+ & Vol-</span> together for quick trigger.</span>}
                 </p>
               </div>
             )}
