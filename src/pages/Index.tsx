@@ -12,11 +12,12 @@ import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
-import { useVoiceCommand } from "@/hooks/useVoiceCommand";
 import { useOfflineCache } from "@/hooks/useOfflineCache";
 import { useVolumeButtonTrigger } from "@/hooks/useVolumeButtonTrigger";
+import { useWakeWordTrigger } from "@/hooks/useWakeWordTrigger";
 
 const Contacts = lazy(() => import("@/pages/Contacts"));
+const Settings = lazy(() => import("@/pages/Settings"));
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState("home");
@@ -28,13 +29,18 @@ const Index = () => {
   const [user, setUser] = useState<any>(null);
   const [triggerType, setTriggerType] = useState<"button" | "voice">("button");
   
+  // Settings state
+  const [wakeWord, setWakeWord] = useState("resqme");
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
+  const [isVolumeButtonEnabled, setIsVolumeButtonEnabled] = useState(true);
+  
   const navigate = useNavigate();
   const { toast } = useToast();
   
   const { isRecording, startRecording, stopRecording, audioBlob } = useAudioRecording();
   const { isOnline, pendingAlerts, cacheAlert, markAsSynced } = useOfflineCache();
 
-  // Volume button and voice command handler
+  // Hardware trigger handler (volume buttons and wake word)
   const handleHardwareTrigger = useCallback(() => {
     if (!isAlertActive && !showCancelWindow) {
       setTriggerType("voice");
@@ -45,13 +51,38 @@ const Index = () => {
   // Volume button trigger (Android only via Capacitor)
   const { isSupported: volumeButtonSupported } = useVolumeButtonTrigger({
     onTrigger: handleHardwareTrigger,
-    enabled: !isAlertActive && !showCancelWindow,
+    enabled: isVolumeButtonEnabled && !isAlertActive && !showCancelWindow,
   });
 
-  const { isListening, isSupported, transcript, startListening, stopListening } = useVoiceCommand({
-    wakeWord: "resqme",
-    onWakeWordDetected: handleHardwareTrigger,
+  // Wake word trigger (background voice detection)
+  const {
+    isSupported: wakeWordSupported,
+    isListening: isWakeWordListening,
+    currentWakeWord,
+    updateWakeWord,
+    startListening: startWakeWord,
+    stopListening: stopWakeWord,
+  } = useWakeWordTrigger({
+    onTrigger: handleHardwareTrigger,
+    enabled: isVoiceEnabled && !isAlertActive && !showCancelWindow,
+    wakeWord,
   });
+
+  // Handle wake word changes from settings
+  const handleWakeWordChange = useCallback(async (newWord: string) => {
+    setWakeWord(newWord);
+    await updateWakeWord(newWord);
+  }, [updateWakeWord]);
+
+  // Handle voice enable/disable
+  const handleVoiceEnabledChange = useCallback(async (enabled: boolean) => {
+    setIsVoiceEnabled(enabled);
+    if (enabled) {
+      await startWakeWord();
+    } else {
+      await stopWakeWord();
+    }
+  }, [startWakeWord, stopWakeWord]);
 
   // Auth check
   useEffect(() => {
@@ -141,12 +172,10 @@ const Index = () => {
 
   const handleSOSTrigger = () => {
     if (isAlertActive) {
-      // Cancel active alert
       cancelAlert();
       return;
     }
 
-    // Show cancel countdown window
     setTriggerType("button");
     setShowCancelWindow(true);
   };
@@ -164,7 +193,6 @@ const Index = () => {
     }
 
     if (!isOnline) {
-      // Cache alert for later sync
       cacheAlert({
         id: crypto.randomUUID(),
         userId: user?.id || "",
@@ -192,7 +220,6 @@ const Index = () => {
       if (data) {
         setCurrentAlertId(data.id);
         
-        // Create initial location entry
         await supabase.from("alert_locations").insert({
           alert_id: data.id,
           latitude: location?.lat || 0,
@@ -200,7 +227,6 @@ const Index = () => {
           accuracy: location?.accuracy,
         });
 
-        // Notify contacts (would trigger edge function for SMS)
         const { data: contacts } = await supabase
           .from("emergency_contacts")
           .select("id")
@@ -247,10 +273,10 @@ const Index = () => {
   };
 
   const toggleVoiceListening = () => {
-    if (isListening) {
-      stopListening();
+    if (isWakeWordListening) {
+      stopWakeWord();
     } else {
-      startListening();
+      startWakeWord();
     }
   };
 
@@ -258,7 +284,6 @@ const Index = () => {
 
   return (
     <div className="min-h-screen pb-24">
-      {/* Cancel countdown overlay */}
       {showCancelWindow && (
         <CancelCountdown
           duration={5}
@@ -267,7 +292,6 @@ const Index = () => {
         />
       )}
 
-      {/* Offline indicator */}
       <OfflineIndicator isOnline={isOnline} pendingCount={pendingAlerts.length} />
 
       {isAlertActive && alertStartTime && currentAlertId && (
@@ -293,12 +317,11 @@ const Index = () => {
                 </div>
               </div>
 
-              {/* Voice command toggle */}
               <VoiceCommandIndicator
-                isListening={isListening}
-                isSupported={isSupported}
+                isListening={isWakeWordListening}
+                isSupported={wakeWordSupported}
                 onToggle={toggleVoiceListening}
-                transcript={transcript}
+                transcript={`Listening for "${currentWakeWord}"`}
               />
             </header>
 
@@ -323,12 +346,16 @@ const Index = () => {
               isTracking={isAlertActive}
             />
 
-            {(isSupported || volumeButtonSupported) && (
+            {(wakeWordSupported || volumeButtonSupported) && (
               <div className="mt-6 p-4 rounded-2xl bg-card border border-border text-center">
                 <p className="text-sm text-muted-foreground">
                   💡 Tips: 
-                  {isSupported && <span> Say <span className="text-secondary font-medium">"ResQMe help"</span> to trigger hands-free.</span>}
-                  {volumeButtonSupported && <span> Press <span className="text-secondary font-medium">Vol+ & Vol-</span> together for quick trigger.</span>}
+                  {wakeWordSupported && isVoiceEnabled && (
+                    <span> Say <span className="text-secondary font-medium">"{currentWakeWord} help"</span> to trigger hands-free.</span>
+                  )}
+                  {volumeButtonSupported && isVolumeButtonEnabled && (
+                    <span> Press <span className="text-secondary font-medium">Vol+ & Vol-</span> together for quick trigger.</span>
+                  )}
                 </p>
               </div>
             )}
@@ -348,9 +375,16 @@ const Index = () => {
         )}
 
         {activeTab === "settings" && (
-          <div className="text-center py-12 text-muted-foreground">
-            <p>Settings coming soon</p>
-          </div>
+          <Suspense fallback={<div className="h-64 flex items-center justify-center text-muted-foreground">Loading...</div>}>
+            <Settings
+              wakeWord={wakeWord}
+              onWakeWordChange={handleWakeWordChange}
+              isVoiceEnabled={isVoiceEnabled}
+              onVoiceEnabledChange={handleVoiceEnabledChange}
+              isVolumeButtonEnabled={isVolumeButtonEnabled}
+              onVolumeButtonEnabledChange={setIsVolumeButtonEnabled}
+            />
+          </Suspense>
         )}
       </div>
 
