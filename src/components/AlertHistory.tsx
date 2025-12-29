@@ -35,17 +35,37 @@ export const AlertHistory = () => {
 
       if (error) throw error;
 
-      setAlerts(
-        (data || []).map((alert) => ({
-          ...alert,
-          status: alert.status as "active" | "resolved" | "cancelled",
-          latitude: alert.latitude ?? undefined,
-          longitude: alert.longitude ?? undefined,
-          resolved_at: alert.resolved_at ?? undefined,
-          audio_url: alert.audio_url ?? undefined,
-          address: alert.address ?? undefined,
-        }))
+      // Generate signed URLs for audio playback (private bucket)
+      const alertsWithSignedUrls = await Promise.all(
+        (data || []).map(async (alert) => {
+          let signedAudioUrl: string | undefined;
+          
+          if (alert.audio_url) {
+            // Extract file path from stored URL or use as path directly
+            const audioPath = alert.audio_url.includes("emergency-recordings/")
+              ? alert.audio_url.split("emergency-recordings/")[1]
+              : alert.audio_url;
+            
+            const { data: signedData } = await supabase.storage
+              .from("emergency-recordings")
+              .createSignedUrl(audioPath, 60 * 60); // 1 hour expiry
+            
+            signedAudioUrl = signedData?.signedUrl;
+          }
+
+          return {
+            ...alert,
+            status: alert.status as "active" | "resolved" | "cancelled",
+            latitude: alert.latitude ?? undefined,
+            longitude: alert.longitude ?? undefined,
+            resolved_at: alert.resolved_at ?? undefined,
+            audio_url: signedAudioUrl,
+            address: alert.address ?? undefined,
+          };
+        })
       );
+
+      setAlerts(alertsWithSignedUrls);
     } catch (error) {
       console.error("Error fetching alerts:", error);
     } finally {
