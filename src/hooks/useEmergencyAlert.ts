@@ -29,7 +29,8 @@ export const useEmergencyAlert = ({ onComplete, onError }: UseEmergencyAlertOpti
     audioBase64: string,
     alertId: string,
     userId: string,
-    location: { lat: number; lng: number } | null
+    location: { lat: number; lng: number } | null,
+    audioMimeType?: string
   ) => {
     alertIdRef.current = alertId;
     
@@ -44,6 +45,7 @@ export const useEmergencyAlert = ({ onComplete, onError }: UseEmergencyAlertOpti
         {
           body: {
             audioBase64,
+            audioMimeType,
             alertId,
             userId,
             latitude: location?.lat,
