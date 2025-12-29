@@ -48,10 +48,16 @@ serve(async (req) => {
 
     console.log(`Audio uploaded: ${fileName}`);
 
-    // Get the audio URL for reference
-    const { data: { publicUrl } } = supabase.storage
+    // Get a signed URL for the audio (private bucket - 30 days expiry)
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from("emergency-recordings")
-      .getPublicUrl(fileName);
+      .createSignedUrl(fileName, 60 * 60 * 24 * 30); // 30 days
+
+    if (signedUrlError) {
+      console.error("Signed URL error:", signedUrlError);
+    }
+
+    const audioUrl = signedUrlData?.signedUrl || null;
 
     // Use AI to analyze the emergency situation
     const analysisPrompt = `You are an emergency response AI assistant. Based on the context that an emergency alert was triggered with audio recording, analyze and provide a brief emergency summary.
@@ -95,7 +101,7 @@ Format your response as a brief, clear emergency message suitable for SMS.`;
       return new Response(
         JSON.stringify({ 
           summary: fallbackSummary,
-          audioUrl: publicUrl,
+          audioUrl,
           transcription: null,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -111,13 +117,13 @@ Format your response as a brief, clear emergency message suitable for SMS.`;
     // Update alert with audio URL
     await supabase
       .from("alerts")
-      .update({ audio_url: publicUrl })
+      .update({ audio_url: audioUrl })
       .eq("id", alertId);
 
     return new Response(
       JSON.stringify({ 
         summary,
-        audioUrl: publicUrl,
+        audioUrl,
         transcription: null, // Audio transcription not available without Whisper
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
