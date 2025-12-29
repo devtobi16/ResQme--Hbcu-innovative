@@ -13,7 +13,7 @@ import { Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSmartRecording } from "@/hooks/useSmartRecording";
 import { useEmergencyAlert } from "@/hooks/useEmergencyAlert";
-import { useOfflineCache } from "@/hooks/useOfflineCache";
+import { useHybridAlert } from "@/hooks/useHybridAlert";
 import { useVolumeButtonTrigger } from "@/hooks/useVolumeButtonTrigger";
 import { useWakeWordTrigger } from "@/hooks/useWakeWordTrigger";
 import { reverseGeocode } from "@/hooks/useReverseGeocode";
@@ -49,7 +49,9 @@ const Index = () => {
   
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { isOnline, pendingAlerts, cacheAlert, markAsSynced } = useOfflineCache();
+  
+  // Get user profile for name
+  const [userProfile, setUserProfile] = useState<{ full_name: string | null }>({ full_name: null });
 
   // Emergency alert processing
   const { 
@@ -63,6 +65,27 @@ const Index = () => {
       toast({
         title: "Alert Sent",
         description: "Emergency contacts have been notified",
+      });
+    },
+  });
+
+  // Hybrid alert system (handles offline + native SMS)
+  const {
+    isOnline,
+    nativeSmsAvailable,
+    pendingAlerts,
+    triggerAlert,
+    syncPendingAlerts,
+  } = useHybridAlert({
+    userId: user?.id || null,
+    userName: userProfile.full_name || user?.email || "Unknown User",
+    onAlertCreated: (alertId) => {
+      setCurrentAlertId(alertId);
+    },
+    onSyncComplete: () => {
+      toast({
+        title: "Sync Complete",
+        description: "Queued alerts have been processed",
       });
     },
   });
@@ -222,27 +245,21 @@ const Index = () => {
     }
   }, [toast]);
 
-  // Sync pending alerts when back online
-  useEffect(() => {
-    if (isOnline && pendingAlerts.length > 0 && user) {
-      pendingAlerts.forEach(async (alert) => {
-        try {
-          await supabase.from("alerts").insert({
-            user_id: user.id,
-            status: "active",
-            latitude: alert.latitude,
-            longitude: alert.longitude,
-            trigger_type: "button",
-          });
-          markAsSynced(alert.id);
-        } catch (e) {
-          console.error("Failed to sync alert:", e);
-        }
-      });
-    }
-  }, [isOnline, pendingAlerts, user, markAsSynced]);
+  // Sync is now handled by useHybridAlert hook automatically
 
-  // Audio processing is now handled by handleRecordingComplete callback
+  // Fetch user profile for name
+  useEffect(() => {
+    if (user?.id) {
+      supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("user_id", user.id)
+        .single()
+        .then(({ data }) => {
+          if (data) setUserProfile(data);
+        });
+    }
+  }, [user?.id]);
 
   const handleSOSTrigger = () => {
     if (isAlertActive) {
@@ -266,71 +283,24 @@ const Index = () => {
       console.error("Failed to start recording:", e);
     }
 
-    if (!isOnline) {
-      cacheAlert({
-        id: crypto.randomUUID(),
-        userId: user?.id || "",
-        latitude: location?.lat || null,
-        longitude: location?.lng || null,
-        timestamp: new Date().toISOString(),
-      });
-      toast({ 
-        title: "🚨 Alert Cached", 
-        description: "Will send when connection is restored", 
-        variant: "destructive" 
-      });
-      return;
-    }
-
-    if (user) {
-      // Get address from coordinates
-      let address: string | null = null;
-      if (location?.lat && location?.lng) {
-        address = await reverseGeocode(location.lat, location.lng);
-      }
-
-      const { data } = await supabase.from("alerts").insert({
-        user_id: user.id,
-        status: "active",
-        latitude: location?.lat,
-        longitude: location?.lng,
-        address: address,
-        trigger_type: triggerType,
-      }).select().single();
-
-      if (data) {
-        setCurrentAlertId(data.id);
-        
-        await supabase.from("alert_locations").insert({
-          alert_id: data.id,
-          latitude: location?.lat || 0,
-          longitude: location?.lng || 0,
-          accuracy: location?.accuracy,
-        });
-
-        const { data: contacts } = await supabase
-          .from("emergency_contacts")
-          .select("id")
-          .eq("user_id", user.id);
-
-        if (contacts) {
-          const logs = contacts.map((c) => ({
-            alert_id: data.id,
-            contact_id: c.id,
-            notification_type: "push",
-            status: "pending",
-          }));
-          await supabase.from("notification_logs").insert(logs);
-        }
-      }
+    // Use hybrid alert system - handles both online and offline cases
+    const alertId = await triggerAlert(location);
+    
+    if (alertId) {
+      setCurrentAlertId(alertId);
     }
 
     toast({ 
       title: "🚨 Emergency Alert Activated", 
-      description: "Sharing location and recording audio", 
+      description: isOnline 
+        ? "Sharing location and recording audio" 
+        : nativeSmsAvailable 
+          ? "SMS sent to contacts. Full analysis when online."
+          : "Alert cached. Will send when connection restored.",
       variant: "destructive" 
     });
   };
+
 
   const cancelAlert = async () => {
     setIsAlertActive(false);
