@@ -1,1 +1,7 @@
 project_id = "pamkojywzlyprgxwkobr"
+
+[functions.analyze-emergency]
+verify_jwt = true
+
+[functions.send-emergency-sms]
+verify_jwt = true

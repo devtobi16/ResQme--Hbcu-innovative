@@ -11,7 +11,8 @@ import { VoiceCommandIndicator } from "@/components/VoiceCommandIndicator";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAudioRecording } from "@/hooks/useAudioRecording";
+import { useSmartRecording } from "@/hooks/useSmartRecording";
+import { useEmergencyAlert } from "@/hooks/useEmergencyAlert";
 import { useOfflineCache } from "@/hooks/useOfflineCache";
 import { useVolumeButtonTrigger } from "@/hooks/useVolumeButtonTrigger";
 import { useWakeWordTrigger } from "@/hooks/useWakeWordTrigger";
@@ -36,9 +37,61 @@ const Index = () => {
   
   const navigate = useNavigate();
   const { toast } = useToast();
-  
-  const { isRecording, startRecording, stopRecording, audioBlob } = useAudioRecording();
   const { isOnline, pendingAlerts, cacheAlert, markAsSynced } = useOfflineCache();
+
+  // Smart recording with silence detection
+  const handleRecordingComplete = useCallback(async (audioBlob: Blob, duration: number) => {
+    if (!currentAlertId || !user) return;
+    
+    console.log(`Recording complete: ${duration}s`);
+    
+    // Convert to base64 for edge function
+    const buffer = await audioBlob.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const audioBase64 = btoa(binary);
+
+    // Process the emergency
+    await processEmergency(audioBase64, currentAlertId, user.id, location);
+  }, [currentAlertId, user, location]);
+
+  const { 
+    isRecording, 
+    duration: recordingDuration,
+    isSilent,
+    silenceDuration,
+    startRecording, 
+    stopRecording,
+  } = useSmartRecording({
+    maxDuration: 180, // 3 minutes max
+    silenceTimeout: 10, // Stop after 10 seconds of silence
+    onRecordingComplete: handleRecordingComplete,
+    onSilenceDetected: () => {
+      toast({
+        title: "Recording Stopped",
+        description: "Extended silence detected. Processing alert...",
+      });
+    },
+  });
+
+  // Emergency alert processing
+  const { 
+    isProcessing, 
+    isSendingNotifications, 
+    summary,
+    processEmergency,
+    reset: resetEmergencyAlert,
+  } = useEmergencyAlert({
+    onComplete: () => {
+      toast({
+        title: "Alert Sent",
+        description: "Emergency contacts have been notified",
+      });
+    },
+  });
 
   // Hardware trigger handler (volume buttons and wake word)
   const handleHardwareTrigger = useCallback(() => {
@@ -146,29 +199,7 @@ const Index = () => {
     }
   }, [isOnline, pendingAlerts, user, markAsSynced]);
 
-  // Upload audio when recording stops
-  useEffect(() => {
-    if (audioBlob && currentAlertId && user) {
-      const uploadAudio = async () => {
-        const fileName = `${user.id}/${currentAlertId}-${Date.now()}.webm`;
-        const { error: uploadError } = await supabase.storage
-          .from("audio-recordings")
-          .upload(fileName, audioBlob);
-
-        if (!uploadError) {
-          const { data: { publicUrl } } = supabase.storage
-            .from("audio-recordings")
-            .getPublicUrl(fileName);
-
-          await supabase
-            .from("alerts")
-            .update({ audio_url: publicUrl })
-            .eq("id", currentAlertId);
-        }
-      };
-      uploadAudio();
-    }
-  }, [audioBlob, currentAlertId, user]);
+  // Audio processing is now handled by handleRecordingComplete callback
 
   const handleSOSTrigger = () => {
     if (isAlertActive) {
@@ -255,6 +286,7 @@ const Index = () => {
     setIsAlertActive(false);
     setAlertStartTime(null);
     stopRecording();
+    resetEmergencyAlert();
 
     if (currentAlertId) {
       await supabase
