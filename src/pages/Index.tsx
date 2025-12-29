@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { SOSButton } from "@/components/SOSButton";
@@ -32,6 +32,15 @@ const Index = () => {
   const [currentAlertId, setCurrentAlertId] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
   const [triggerType, setTriggerType] = useState<"button" | "voice">("button");
+
+  const pendingRecordingRef = useRef<
+    | {
+        audioBase64: string;
+        audioMimeType?: string;
+        location: { lat: number; lng: number } | null;
+      }
+    | null
+  >(null);
   
   // Settings state
   const [wakeWord, setWakeWord] = useState("resqme");
@@ -42,13 +51,44 @@ const Index = () => {
   const { toast } = useToast();
   const { isOnline, pendingAlerts, cacheAlert, markAsSynced } = useOfflineCache();
 
+  // Emergency alert processing
+  const { 
+    isProcessing, 
+    isSendingNotifications, 
+    summary,
+    processEmergency,
+    reset: resetEmergencyAlert,
+  } = useEmergencyAlert({
+    onComplete: () => {
+      toast({
+        title: "Alert Sent",
+        description: "Emergency contacts have been notified",
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (!currentAlertId || !user || !pendingRecordingRef.current) return;
+
+    const pending = pendingRecordingRef.current;
+    pendingRecordingRef.current = null;
+
+    processEmergency(
+      pending.audioBase64,
+      currentAlertId,
+      user.id,
+      pending.location,
+      pending.audioMimeType
+    );
+  }, [currentAlertId, user, processEmergency]);
+
   // Smart recording with silence detection
   const handleRecordingComplete = useCallback(async (audioBlob: Blob, duration: number) => {
-    if (!currentAlertId || !user) return;
+    if (!user) return;
     
     console.log(`Recording complete: ${duration}s`);
     
-    // Convert to base64 for edge function
+    // Convert to base64 for backend function
     const buffer = await audioBlob.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     let binary = "";
@@ -56,10 +96,26 @@ const Index = () => {
       binary += String.fromCharCode(bytes[i]);
     }
     const audioBase64 = btoa(binary);
+    const audioMimeType = audioBlob.type || undefined;
+
+    // If the alert row hasn't been created yet, store the recording and process once we have an alert id.
+    if (!currentAlertId) {
+      pendingRecordingRef.current = {
+        audioBase64,
+        audioMimeType,
+        location,
+      };
+
+      toast({
+        title: "Audio Captured",
+        description: "Finalizing alert setup, then uploading your recording...",
+      });
+      return;
+    }
 
     // Process the emergency
-    await processEmergency(audioBase64, currentAlertId, user.id, location);
-  }, [currentAlertId, user, location]);
+    await processEmergency(audioBase64, currentAlertId, user.id, location, audioMimeType);
+  }, [currentAlertId, user, location, processEmergency, toast]);
 
   const { 
     isRecording, 
@@ -76,22 +132,6 @@ const Index = () => {
       toast({
         title: "Recording Stopped",
         description: "Extended silence detected. Processing alert...",
-      });
-    },
-  });
-
-  // Emergency alert processing
-  const { 
-    isProcessing, 
-    isSendingNotifications, 
-    summary,
-    processEmergency,
-    reset: resetEmergencyAlert,
-  } = useEmergencyAlert({
-    onComplete: () => {
-      toast({
-        title: "Alert Sent",
-        description: "Emergency contacts have been notified",
       });
     },
   });

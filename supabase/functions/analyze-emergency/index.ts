@@ -12,8 +12,8 @@ serve(async (req) => {
   }
 
   try {
-    const { audioBase64, alertId, userId, latitude, longitude } = await req.json();
-    
+    const { audioBase64, audioMimeType, alertId, userId, latitude, longitude } = await req.json();
+
     if (!audioBase64 || !alertId || !userId) {
       throw new Error("Missing required fields: audioBase64, alertId, userId");
     }
@@ -30,14 +30,27 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    const safeMimeType =
+      typeof audioMimeType === "string" && audioMimeType.startsWith("audio/")
+        ? audioMimeType
+        : "audio/webm";
+
+    const extension = safeMimeType.includes("mp4")
+      ? "m4a"
+      : safeMimeType.includes("mpeg")
+        ? "mp3"
+        : safeMimeType.includes("ogg")
+          ? "ogg"
+          : "webm";
+
     // Decode base64 audio and upload to storage
-    const audioData = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
-    const fileName = `${userId}/${alertId}-${Date.now()}.webm`;
-    
+    const audioData = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
+    const fileName = `${userId}/${alertId}-${Date.now()}.${extension}`;
+
     const { error: uploadError } = await supabase.storage
       .from("emergency-recordings")
       .upload(fileName, audioData, {
-        contentType: "audio/webm",
+        contentType: safeMimeType,
         upsert: false,
       });
 
