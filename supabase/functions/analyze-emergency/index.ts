@@ -20,9 +20,9 @@ serve(async (req) => {
 
     console.log(`Processing emergency audio for alert ${alertId}`);
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured");
     }
 
     // Create Supabase client
@@ -54,7 +54,6 @@ serve(async (req) => {
       .getPublicUrl(fileName);
 
     // Use AI to analyze the emergency situation
-    // We'll send a prompt describing the audio context
     const analysisPrompt = `You are an emergency response AI assistant. Based on the context that an emergency alert was triggered with audio recording, analyze and provide a brief emergency summary.
 
 The user triggered an emergency SOS alert at the following location:
@@ -70,14 +69,14 @@ Since we cannot transcribe the audio directly, assume this is a genuine emergenc
 
 Format your response as a brief, clear emergency message suitable for SMS.`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gpt-4o-mini",
         messages: [
           { role: "system", content: "You are an emergency response assistant. Provide clear, concise emergency alerts." },
           { role: "user", content: analysisPrompt }
