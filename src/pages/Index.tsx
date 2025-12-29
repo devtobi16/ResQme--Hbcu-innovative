@@ -428,19 +428,6 @@ const Index = () => {
               isTracking={isAlertActive}
             />
 
-            {(wakeWordSupported || volumeButtonSupported) && (
-              <div className="mt-6 p-4 rounded-2xl bg-card border border-border text-center">
-                <p className="text-sm text-muted-foreground">
-                  💡 Tips: 
-                  {wakeWordSupported && isVoiceEnabled && (
-                    <span> Say <span className="text-secondary font-medium">"{currentWakeWord} help"</span> to trigger hands-free.</span>
-                  )}
-                  {volumeButtonSupported && isVolumeButtonEnabled && (
-                    <span> Press <span className="text-secondary font-medium">Vol+ & Vol-</span> together for quick trigger.</span>
-                  )}
-                </p>
-              </div>
-            )}
           </>
         )}
 
