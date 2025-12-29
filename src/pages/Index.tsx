@@ -16,6 +16,9 @@ import { useEmergencyAlert } from "@/hooks/useEmergencyAlert";
 import { useOfflineCache } from "@/hooks/useOfflineCache";
 import { useVolumeButtonTrigger } from "@/hooks/useVolumeButtonTrigger";
 import { useWakeWordTrigger } from "@/hooks/useWakeWordTrigger";
+import { reverseGeocode } from "@/hooks/useReverseGeocode";
+
+import { AlertHistory } from "@/components/AlertHistory";
 
 const Contacts = lazy(() => import("@/pages/Contacts"));
 const Settings = lazy(() => import("@/pages/Settings"));
@@ -240,11 +243,18 @@ const Index = () => {
     }
 
     if (user) {
+      // Get address from coordinates
+      let address: string | null = null;
+      if (location?.lat && location?.lng) {
+        address = await reverseGeocode(location.lat, location.lng);
+      }
+
       const { data } = await supabase.from("alerts").insert({
         user_id: user.id,
         status: "active",
         latitude: location?.lat,
         longitude: location?.lng,
+        address: address,
         trigger_type: triggerType,
       }).select().single();
 
@@ -401,9 +411,7 @@ const Index = () => {
         )}
 
         {activeTab === "history" && (
-          <div className="text-center py-12 text-muted-foreground">
-            <p>Alert history coming soon</p>
-          </div>
+          <AlertHistory />
         )}
 
         {activeTab === "settings" && (

@@ -1,7 +1,8 @@
-import { AlertTriangle, Clock, MapPin, CheckCircle, XCircle } from "lucide-react";
+import { AlertTriangle, Clock, MapPin, CheckCircle, XCircle, Volume2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { useReverseGeocode } from "@/hooks/useReverseGeocode";
 
 interface Alert {
   id: string;
@@ -10,6 +11,8 @@ interface Alert {
   longitude?: number;
   triggered_at: string;
   resolved_at?: string;
+  audio_url?: string;
+  address?: string;
 }
 
 interface AlertHistoryCardProps {
@@ -18,6 +21,14 @@ interface AlertHistoryCardProps {
 }
 
 export const AlertHistoryCard = ({ alert, onClick }: AlertHistoryCardProps) => {
+  // Use geocoding hook if no stored address
+  const { address: geocodedAddress, isLoading } = useReverseGeocode(
+    alert.address ? null : (alert.latitude ?? null),
+    alert.address ? null : (alert.longitude ?? null)
+  );
+
+  const displayAddress = alert.address || geocodedAddress;
+
   const statusConfig = {
     active: {
       icon: AlertTriangle,
@@ -72,21 +83,34 @@ export const AlertHistoryCard = ({ alert, onClick }: AlertHistoryCardProps) => {
             </div>
           </div>
 
-          <span className={cn(
-            "text-xs font-medium px-2 py-1 rounded-full",
-            config.bg,
-            config.color
-          )}>
-            {config.label}
-          </span>
+          <div className="flex items-center gap-2">
+            {alert.audio_url && (
+              <div className="w-6 h-6 rounded-full bg-accent/10 flex items-center justify-center">
+                <Volume2 className="w-3 h-3 text-accent" />
+              </div>
+            )}
+            <span className={cn(
+              "text-xs font-medium px-2 py-1 rounded-full",
+              config.bg,
+              config.color
+            )}>
+              {config.label}
+            </span>
+          </div>
         </div>
 
-        {alert.latitude && alert.longitude && (
+        {(alert.latitude && alert.longitude) && (
           <div className="mt-3 pt-3 border-t border-border/50 flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="w-4 h-4" />
-            <span className="font-mono text-xs">
-              {alert.latitude.toFixed(4)}, {alert.longitude.toFixed(4)}
-            </span>
+            <MapPin className="w-4 h-4 shrink-0" />
+            {isLoading ? (
+              <span className="text-xs animate-pulse">Loading address...</span>
+            ) : displayAddress ? (
+              <span className="text-xs truncate">{displayAddress}</span>
+            ) : (
+              <span className="font-mono text-xs">
+                {alert.latitude.toFixed(4)}, {alert.longitude.toFixed(4)}
+              </span>
+            )}
           </div>
         )}
       </CardContent>
