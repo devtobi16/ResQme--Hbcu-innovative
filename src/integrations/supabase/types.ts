@@ -54,6 +54,7 @@ export type Database = {
           address: string | null
           audio_url: string | null
           created_at: string
+          deleted_at: string | null
           id: string
           latitude: number | null
           longitude: number | null
@@ -67,6 +68,7 @@ export type Database = {
           address?: string | null
           audio_url?: string | null
           created_at?: string
+          deleted_at?: string | null
           id?: string
           latitude?: number | null
           longitude?: number | null
@@ -80,6 +82,7 @@ export type Database = {
           address?: string | null
           audio_url?: string | null
           created_at?: string
+          deleted_at?: string | null
           id?: string
           latitude?: number | null
           longitude?: number | null
@@ -207,7 +210,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      purge_old_deleted_alerts: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never

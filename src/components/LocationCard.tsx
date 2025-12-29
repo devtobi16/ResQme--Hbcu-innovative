@@ -1,6 +1,7 @@
 import { MapPin, Navigation, ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useReverseGeocode } from "@/hooks/useReverseGeocode";
 
 interface LocationCardProps {
   latitude: number | null;
@@ -11,9 +12,14 @@ interface LocationCardProps {
 }
 
 export const LocationCard = ({ latitude, longitude, accuracy, address, isTracking }: LocationCardProps) => {
+  const { address: geocodedAddress, isLoading } = useReverseGeocode(latitude, longitude);
+  const displayAddress = address || geocodedAddress;
+
   const openInMaps = () => {
     if (latitude && longitude) {
-      window.open(`https://maps.google.com/?q=${latitude},${longitude}`, "_blank");
+      // Use the more reliable Google Maps search URL format
+      const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+      window.open(url, "_blank", "noopener,noreferrer");
     }
   };
 
@@ -42,18 +48,32 @@ export const LocationCard = ({ latitude, longitude, accuracy, address, isTrackin
 
         {latitude && longitude ? (
           <div className="space-y-3">
-            {/* Coordinates */}
+            {/* Address - show prominently */}
             <div className="bg-muted/50 rounded-xl p-3">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-xs text-muted-foreground block mb-1">Latitude</span>
-                  <span className="font-mono text-sm text-foreground">{latitude.toFixed(6)}</span>
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-muted-foreground animate-pulse" />
+                  <span className="text-sm text-muted-foreground animate-pulse">
+                    Looking up address...
+                  </span>
                 </div>
-                <div>
-                  <span className="text-xs text-muted-foreground block mb-1">Longitude</span>
-                  <span className="font-mono text-sm text-foreground">{longitude.toFixed(6)}</span>
+              ) : displayAddress ? (
+                <div className="flex items-start gap-2">
+                  <Navigation className="w-4 h-4 text-secondary mt-0.5 shrink-0" />
+                  <span className="text-sm text-foreground font-medium">{displayAddress}</span>
                 </div>
-              </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-xs text-muted-foreground block mb-1">Latitude</span>
+                    <span className="font-mono text-sm text-foreground">{latitude.toFixed(6)}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground block mb-1">Longitude</span>
+                    <span className="font-mono text-sm text-foreground">{longitude.toFixed(6)}</span>
+                  </div>
+                </div>
+              )}
               {accuracy && (
                 <div className="mt-2 pt-2 border-t border-border/50">
                   <span className="text-xs text-muted-foreground">
@@ -63,23 +83,15 @@ export const LocationCard = ({ latitude, longitude, accuracy, address, isTrackin
               )}
             </div>
 
-            {/* Address if available */}
-            {address && (
-              <div className="flex items-start gap-2 text-sm">
-                <Navigation className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                <span className="text-muted-foreground">{address}</span>
-              </div>
-            )}
-
             {/* Open in Maps button */}
             <Button
               variant="secondary"
               size="sm"
-              className="w-full mt-2"
+              className="w-full"
               onClick={openInMaps}
             >
               <ExternalLink className="w-4 h-4 mr-2" />
-              Open in Maps
+              Open in Google Maps
             </Button>
           </div>
         ) : (
