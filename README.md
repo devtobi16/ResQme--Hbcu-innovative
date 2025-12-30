@@ -1,73 +1,214 @@
-# Welcome to your Lovable project
+# ResQMe - AI-Powered Emergency Alert System
 
-## Project info
+<div align="center">
+  <h3>🆘 Personal Safety App with Intelligent Audio Analysis</h3>
+  <p>A hybrid offline-first emergency response system that captures audio, analyzes context with AI, and delivers critical alerts via SMS.</p>
+</div>
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+---
 
-## How can I edit this code?
+## Overview
 
-There are several ways of editing your application.
+ResQMe is a comprehensive personal safety application designed to send emergency alerts to trusted contacts when users are in distress. The app captures ambient audio during emergencies, processes it through AI to extract context, and delivers actionable SMS messages with real-time GPS location.
 
-**Use Lovable**
+### Key Features
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+- **One-Tap SOS Activation** - Large, accessible emergency button with countdown cancellation
+- **Smart Audio Recording** - Automatic silence detection stops recording after 10 seconds of quiet
+- **AI-Powered Analysis** - OpenAI processes audio to generate emergency context summaries
+- **Offline-First Architecture** - Queues alerts locally when offline, auto-syncs when connected
+- **Multi-Modal Triggers** - Voice activation, hardware volume buttons, and in-app controls
+- **Real-Time Location Tracking** - Continuous GPS updates during active alerts
+- **Native SMS Delivery** - Twilio integration for reliable message delivery
 
-Changes made via Lovable will be committed automatically to this repo.
+---
 
-**Use your preferred IDE**
+## Tech Stack
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Frontend
+| Technology | Purpose |
+|------------|---------|
+| React 18 | UI framework with hooks-based state management |
+| TypeScript | Type-safe development |
+| Vite | Build tooling and dev server |
+| Tailwind CSS | Utility-first styling |
+| shadcn/ui | Accessible component library |
+| TanStack Query | Server state management and caching |
+| Capacitor | Native Android integration |
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Backend (Supabase)
+| Service | Purpose |
+|---------|---------|
+| PostgreSQL | Alert storage, user profiles, contact management |
+| Edge Functions | AI analysis, SMS dispatch, reverse geocoding |
+| Row Level Security | Data isolation per user |
+| Storage | Audio file persistence |
+| Auth | Email-based authentication |
 
-Follow these steps:
+### External Services
+| Service | Purpose |
+|---------|---------|
+| OpenAI API | Audio transcription and emergency context analysis |
+| Twilio | SMS message delivery |
+| OpenCage | Reverse geocoding for human-readable addresses |
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        ResQMe Mobile App                         │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │  SOS Button │  │ Voice Cmd   │  │  Volume Button Trigger  │  │
+│  └──────┬──────┘  └──────┬──────┘  └────────────┬────────────┘  │
+│         │                │                      │                │
+│         └────────────────┼──────────────────────┘                │
+│                          ▼                                       │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │              useHybridAlert (Core State Machine)            ││
+│  │  ┌─────────┐  ┌──────────┐  ┌─────────┐  ┌───────────────┐  ││
+│  │  │ Pending │→ │Recording │→ │Uploading│→ │Sending SMS    │  ││
+│  │  └─────────┘  └──────────┘  └─────────┘  └───────────────┘  ││
+│  └─────────────────────────────────────────────────────────────┘│
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │           Offline Queue (IndexedDB)                         ││
+│  │           - Stores audio blobs when offline                 ││
+│  │           - Auto-syncs on reconnection                      ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Supabase Backend                             │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐ │
+│  │   Database   │  │   Storage    │  │    Edge Functions      │ │
+│  │  - alerts    │  │  - audio/    │  │  - analyze-emergency   │ │
+│  │  - contacts  │  │              │  │  - send-emergency-sms  │ │
+│  │  - profiles  │  │              │  │  - reverse-geocode     │ │
+│  └──────────────┘  └──────────────┘  └────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+     ┌─────────────────┐             ┌─────────────────┐
+     │   OpenAI API    │             │   Twilio API    │
+     │  Audio → Text   │             │   SMS Delivery  │
+     │  Context Analysis│             │                 │
+     └─────────────────┘             └─────────────────┘
+```
+
+---
+
+## Database Schema
+
+```sql
+-- Core tables with RLS policies for user isolation
+
+profiles          -- User profile data (name, phone)
+emergency_contacts -- Trusted contacts per user
+alerts            -- Emergency events with status tracking
+alert_locations   -- GPS breadcrumb trail during active alerts
+notification_logs -- SMS delivery audit trail
+```
+
+---
+
+## Local Development
+
+### Prerequisites
+- Node.js 18+
+- npm or bun
+
+### Setup
+
+```bash
+# Clone the repository
 git clone <YOUR_GIT_URL>
+cd resqme
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Install dependencies
+npm install
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Environment Variables
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+The app requires the following secrets configured in your backend:
 
-**Use GitHub Codespaces**
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key for audio analysis |
+| `TWILIO_ACCOUNT_SID` | Twilio account identifier |
+| `TWILIO_AUTH_TOKEN` | Twilio authentication token |
+| `TWILIO_PHONE_NUMBER` | Twilio sender phone number |
+| `OPENCAGE_API_KEY` | OpenCage geocoding API key |
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+---
 
-## What technologies are used for this project?
+## Android Build (Capacitor)
 
-This project is built with:
+```bash
+# Sync web assets to native project
+npx cap sync android
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+# Open in Android Studio
+npx cap open android
 
-## How can I deploy this project?
+# Build APK
+./gradlew assembleDebug
+```
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+### Native Plugins
 
-## Can I connect a custom domain to my Lovable project?
+The app includes custom Capacitor plugins for:
+- **NativeSmsPlugin** - Direct SMS sending (bypasses web limitations)
+- **VolumeButtonPlugin** - Hardware button detection via Foreground Service
+- **WakeWordPlugin** - Voice activation in background
 
-Yes, you can!
+---
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## Edge Functions
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+| Function | Trigger | Purpose |
+|----------|---------|---------|
+| `analyze-emergency` | HTTP POST | Transcribes audio, generates AI summary |
+| `send-emergency-sms` | HTTP POST | Dispatches SMS via Twilio to all contacts |
+| `reverse-geocode` | HTTP POST | Converts GPS coords to street address |
+
+---
+
+## Security
+
+- **Row Level Security (RLS)** - All tables protected; users can only access their own data
+- **Authenticated endpoints** - Edge functions validate JWT tokens
+- **No client-side secrets** - API keys stored server-side only
+
+---
+
+## Roadmap
+
+- [ ] iOS Capacitor build
+- [ ] Push notifications for alert status updates
+- [ ] Two-way SMS responses from contacts
+- [ ] Integration with local emergency services (911)
+- [ ] Wearable device triggers (smartwatch)
+
+---
+
+## License
+
+MIT
+
+---
+
+<div align="center">
+  <sub>Built with ❤️ for personal safety</sub>
+</div>
