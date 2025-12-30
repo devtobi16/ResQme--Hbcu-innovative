@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.send-emergency-sms]
 verify_jwt = true
+
+[functions.reverse-geocode]
+verify_jwt = false
