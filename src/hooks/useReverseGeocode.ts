@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface GeocodeResult {
   address: string | null;
@@ -8,6 +9,22 @@ interface GeocodeResult {
 
 // Cache to avoid repeated API calls for the same coordinates
 const geocodeCache = new Map<string, string>();
+
+const fetchAddressFromEdgeFunction = async (
+  latitude: number,
+  longitude: number
+): Promise<string | null> => {
+  const { data, error } = await supabase.functions.invoke("reverse-geocode", {
+    body: { latitude, longitude },
+  });
+
+  if (error) {
+    console.error("Edge function error:", error);
+    return null;
+  }
+
+  return data?.address || null;
+};
 
 export const useReverseGeocode = (
   latitude: number | null,
@@ -36,55 +53,7 @@ export const useReverseGeocode = (
       setError(null);
 
       try {
-        // Using OpenStreetMap Nominatim (free, no API key required)
-        const response = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
-          {
-            headers: {
-              "Accept-Language": "en",
-              "User-Agent": "ResQMe Emergency App",
-            },
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch address");
-        }
-
-        const data = await response.json();
-        
-        // Build a readable address from the response
-        const addressParts = [];
-        const addr = data.address;
-
-        if (addr) {
-          // Street level
-          if (addr.house_number && addr.road) {
-            addressParts.push(`${addr.house_number} ${addr.road}`);
-          } else if (addr.road) {
-            addressParts.push(addr.road);
-          }
-
-          // City/Town
-          const locality = addr.city || addr.town || addr.village || addr.suburb || addr.neighbourhood;
-          if (locality) {
-            addressParts.push(locality);
-          }
-
-          // State/Province
-          if (addr.state) {
-            addressParts.push(addr.state);
-          }
-
-          // Country (full name)
-          if (addr.country) {
-            addressParts.push(addr.country);
-          }
-        }
-
-        const formattedAddress = addressParts.length > 0 
-          ? addressParts.join(", ")
-          : data.display_name || null;
+        const formattedAddress = await fetchAddressFromEdgeFunction(latitude, longitude);
 
         // Cache the result
         if (formattedAddress) {
@@ -118,47 +87,11 @@ export const reverseGeocode = async (
     return geocodeCache.get(cacheKey)!;
   }
 
-  try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
-      {
-        headers: {
-          "Accept-Language": "en",
-          "User-Agent": "ResQMe Emergency App",
-        },
-      }
-    );
+  const formattedAddress = await fetchAddressFromEdgeFunction(latitude, longitude);
 
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    const addr = data.address;
-    const addressParts = [];
-
-    if (addr) {
-      if (addr.house_number && addr.road) {
-        addressParts.push(`${addr.house_number} ${addr.road}`);
-      } else if (addr.road) {
-        addressParts.push(addr.road);
-      }
-
-      const locality = addr.city || addr.town || addr.village || addr.suburb;
-      if (locality) addressParts.push(locality);
-      if (addr.state) addressParts.push(addr.state);
-      if (addr.country) addressParts.push(addr.country);
-    }
-
-    const formattedAddress = addressParts.length > 0 
-      ? addressParts.join(", ")
-      : data.display_name || null;
-
-    if (formattedAddress) {
-      geocodeCache.set(cacheKey, formattedAddress);
-    }
-
-    return formattedAddress;
-  } catch (err) {
-    console.error("Geocoding error:", err);
-    return null;
+  if (formattedAddress) {
+    geocodeCache.set(cacheKey, formattedAddress);
   }
+
+  return formattedAddress;
 };
