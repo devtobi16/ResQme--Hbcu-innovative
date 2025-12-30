@@ -71,14 +71,14 @@ export const useReverseGeocode = (
             addressParts.push(locality);
           }
 
-          // State
+          // State/Province
           if (addr.state) {
             addressParts.push(addr.state);
           }
 
-          // Country (abbreviated if possible)
-          if (addr.country_code) {
-            addressParts.push(addr.country_code.toUpperCase());
+          // Country (full name)
+          if (addr.country) {
+            addressParts.push(addr.country);
           }
         }
 
@@ -145,7 +145,7 @@ export const reverseGeocode = async (
       const locality = addr.city || addr.town || addr.village || addr.suburb;
       if (locality) addressParts.push(locality);
       if (addr.state) addressParts.push(addr.state);
-      if (addr.country_code) addressParts.push(addr.country_code.toUpperCase());
+      if (addr.country) addressParts.push(addr.country);
     }
 
     const formattedAddress = addressParts.length > 0 
