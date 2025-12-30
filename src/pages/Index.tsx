@@ -351,6 +351,8 @@ const Index = () => {
           alertId={currentAlertId}
           startedAt={alertStartTime}
           isRecording={isRecording}
+          recordingDuration={recordingDuration}
+          silenceDuration={silenceDuration}
           onCancel={cancelAlert}
         />
       )}
