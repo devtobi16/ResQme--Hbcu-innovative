@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.8c48630841f748dfb54f855d46ef6334',
+  appId: 'app.lovable.resqme',
   appName: 'ResQMe Safety App',
   webDir: 'dist',
   server: {
