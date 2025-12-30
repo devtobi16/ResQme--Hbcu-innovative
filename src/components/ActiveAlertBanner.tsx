@@ -7,6 +7,8 @@ interface ActiveAlertBannerProps {
   alertId: string;
   startedAt: Date;
   isRecording: boolean;
+  recordingDuration?: number;
+  silenceDuration?: number;
   onCancel: () => void;
 }
 
@@ -14,6 +16,8 @@ export const ActiveAlertBanner = ({
   alertId,
   startedAt,
   isRecording,
+  recordingDuration = 0,
+  silenceDuration = 0,
   onCancel,
 }: ActiveAlertBannerProps) => {
   return (
@@ -61,7 +65,7 @@ export const ActiveAlertBanner = ({
                 <div className="w-2 h-2 rounded-full bg-primary-foreground animate-pulse" />
                 <Mic className="w-4 h-4 text-primary-foreground/80" />
                 <span className="text-xs text-primary-foreground/80">
-                  Recording audio
+                  Recording {recordingDuration}s {silenceDuration > 0 && `(silence: ${silenceDuration}s/10s)`}
                 </span>
               </div>
             )}

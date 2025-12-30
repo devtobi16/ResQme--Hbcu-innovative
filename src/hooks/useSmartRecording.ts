@@ -9,7 +9,7 @@ interface SmartRecordingState {
 
 interface UseSmartRecordingOptions {
   maxDuration?: number; // Maximum recording duration in seconds (default: 180 = 3 min)
-  silenceThreshold?: number; // Audio level below which is considered silence (default: 0.01)
+  silenceThreshold?: number; // Audio level below which is considered silence (default: 0.03 - adjusted for mobile mics)
   silenceTimeout?: number; // Seconds of silence before auto-stop (default: 10)
   onRecordingComplete?: (audioBlob: Blob, duration: number) => void;
   onSilenceDetected?: () => void;
@@ -17,7 +17,7 @@ interface UseSmartRecordingOptions {
 
 export const useSmartRecording = ({
   maxDuration = 180,
-  silenceThreshold = 0.01,
+  silenceThreshold = 0.03, // Increased for mobile microphones that pick up more ambient noise
   silenceTimeout = 10,
   onRecordingComplete,
   onSilenceDetected,
@@ -133,6 +133,7 @@ export const useSmartRecording = ({
 
       // Silence detection
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      let hasHadSound = false; // Track if we've detected sound at least once
       
       silenceCheckIntervalRef.current = setInterval(() => {
         if (!analyserRef.current) return;
@@ -144,6 +145,17 @@ export const useSmartRecording = ({
         const normalizedLevel = average / 255;
         
         const isSilent = normalizedLevel < silenceThreshold;
+        
+        // Log audio level periodically for debugging
+        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        if (elapsed % 2 === 0) {
+          console.log(`Audio level: ${normalizedLevel.toFixed(4)}, threshold: ${silenceThreshold}, silent: ${isSilent}`);
+        }
+        
+        // Mark that we've detected sound at some point
+        if (!isSilent) {
+          hasHadSound = true;
+        }
         
         if (isSilent) {
           if (!silenceStartRef.current) {
@@ -158,9 +170,11 @@ export const useSmartRecording = ({
             silenceDuration 
           }));
 
-          // Auto-stop after extended silence
-          if (silenceDuration >= silenceTimeout) {
-            console.log("Extended silence detected, stopping recording");
+          // Auto-stop after extended silence (only if we've had some sound first, or after initial grace period)
+          const shouldStop = silenceDuration >= silenceTimeout && (hasHadSound || elapsed >= 15);
+          
+          if (shouldStop) {
+            console.log(`Extended silence detected (${silenceDuration}s), stopping recording. Had sound: ${hasHadSound}`);
             if (onSilenceDetected) {
               onSilenceDetected();
             }
