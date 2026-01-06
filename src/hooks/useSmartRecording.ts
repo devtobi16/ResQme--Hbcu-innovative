@@ -10,7 +10,7 @@ interface SmartRecordingState {
 interface UseSmartRecordingOptions {
   maxDuration?: number; // Maximum recording duration in seconds (default: 180 = 3 min)
   silenceThreshold?: number; // Audio level below which is considered silence (default: 0.03 - adjusted for mobile mics)
-  silenceTimeout?: number; // Seconds of silence before auto-stop (default: 10)
+  silenceTimeout?: number; // Seconds of silence before auto-stop (default: 30)
   onRecordingComplete?: (audioBlob: Blob, duration: number) => void;
   onSilenceDetected?: () => void;
 }
@@ -18,7 +18,7 @@ interface UseSmartRecordingOptions {
 export const useSmartRecording = ({
   maxDuration = 180,
   silenceThreshold = 0.03, // Increased for mobile microphones that pick up more ambient noise
-  silenceTimeout = 10,
+  silenceTimeout = 30,
   onRecordingComplete,
   onSilenceDetected,
 }: UseSmartRecordingOptions = {}) => {
