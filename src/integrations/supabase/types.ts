@@ -61,6 +61,7 @@ export type Database = {
           notes: string | null
           resolved_at: string | null
           status: string
+          trigger_type: string
           triggered_at: string
           user_id: string
         }
@@ -75,6 +76,7 @@ export type Database = {
           notes?: string | null
           resolved_at?: string | null
           status?: string
+          trigger_type?: string
           triggered_at?: string
           user_id: string
         }
@@ -89,6 +91,7 @@ export type Database = {
           notes?: string | null
           resolved_at?: string | null
           status?: string
+          trigger_type?: string
           triggered_at?: string
           user_id?: string
         }
