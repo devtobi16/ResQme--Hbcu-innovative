@@ -200,10 +200,33 @@ const Index = () => {
   }, [handleHardwareTrigger]);
 
   // Volume button trigger (Android only via Capacitor)
-  const { isSupported: volumeButtonSupported } = useVolumeButtonTrigger({
+  const { 
+    isSupported: volumeButtonSupported,
+    isBackgroundActive,
+    startBackgroundProtection,
+    stopBackgroundProtection,
+  } = useVolumeButtonTrigger({
     onTrigger: handleHardwareTrigger,
     enabled: isVolumeButtonEnabled && !isAlertActive && !showCancelWindow,
   });
+
+  // Handle volume button enable/disable - explicitly control the background service
+  const handleVolumeButtonEnabledChange = useCallback(async (enabled: boolean) => {
+    setIsVolumeButtonEnabled(enabled);
+    if (enabled) {
+      await startBackgroundProtection();
+      toast({
+        title: "Background Protection Enabled",
+        description: "Volume buttons will work even when the app is closed",
+      });
+    } else {
+      await stopBackgroundProtection();
+      toast({
+        title: "Background Protection Disabled",
+        description: "Volume button trigger requires the app to be open",
+      });
+    }
+  }, [startBackgroundProtection, stopBackgroundProtection, toast]);
 
   // Wake word trigger (background voice detection)
   const {
@@ -453,7 +476,8 @@ const Index = () => {
               isVoiceEnabled={isVoiceEnabled}
               onVoiceEnabledChange={handleVoiceEnabledChange}
               isVolumeButtonEnabled={isVolumeButtonEnabled}
-              onVolumeButtonEnabledChange={setIsVolumeButtonEnabled}
+              onVolumeButtonEnabledChange={handleVolumeButtonEnabledChange}
+              isBackgroundServiceActive={isBackgroundActive}
             />
           </Suspense>
         )}
