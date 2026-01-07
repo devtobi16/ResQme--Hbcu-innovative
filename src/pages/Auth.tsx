@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { pendingSosKey } from "@/components/NativeSOSTriggerListener";
 import { Shield, Mail, Lock, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -14,8 +15,17 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [hasPendingSos, setHasPendingSos] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    try {
+      setHasPendingSos(!!localStorage.getItem(pendingSosKey));
+    } catch {
+      setHasPendingSos(false);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +62,11 @@ const Auth = () => {
           </div>
           <h1 className="font-display text-3xl font-bold text-foreground">ResQMe</h1>
           <p className="text-muted-foreground mt-2">Your personal safety companion</p>
+          {hasPendingSos && (
+            <p className="text-sm text-muted-foreground mt-3">
+              Emergency trigger detected — sign in to start the SOS countdown.
+            </p>
+          )}
         </div>
 
         <Card className="glass-card border-border/50">

@@ -9,6 +9,7 @@ import { ActiveAlertBanner } from "@/components/ActiveAlertBanner";
 import { CancelCountdown } from "@/components/CancelCountdown";
 import { VoiceCommandIndicator } from "@/components/VoiceCommandIndicator";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
+import { pendingSosKey } from "@/components/NativeSOSTriggerListener";
 import { Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSmartRecording } from "@/hooks/useSmartRecording";
@@ -149,7 +150,7 @@ const Index = () => {
     stopRecording,
   } = useSmartRecording({
     maxDuration: 180, // 3 minutes max
-    silenceTimeout: 10, // Stop after 10 seconds of silence
+    silenceTimeout: 30, // Stop after 30 seconds of silence
     onRecordingComplete: handleRecordingComplete,
     onSilenceDetected: () => {
       toast({
@@ -166,6 +167,37 @@ const Index = () => {
       setShowCancelWindow(true);
     }
   }, [isAlertActive, showCancelWindow]);
+
+  // If a native trigger arrived while we were on another route (e.g. /auth),
+  // consume the persisted "pending" flag and open the cancel window.
+  useEffect(() => {
+    if (!user) return;
+
+    const pending = (() => {
+      try {
+        return localStorage.getItem(pendingSosKey);
+      } catch {
+        return null;
+      }
+    })();
+
+    if (!pending) return;
+
+    try {
+      localStorage.removeItem(pendingSosKey);
+    } catch {
+      // ignore
+    }
+
+    handleHardwareTrigger();
+  }, [user, handleHardwareTrigger]);
+
+  // Also respond immediately when the trigger happens while this screen is mounted.
+  useEffect(() => {
+    const onNativeTrigger = () => handleHardwareTrigger();
+    window.addEventListener("resqme:sos-trigger", onNativeTrigger);
+    return () => window.removeEventListener("resqme:sos-trigger", onNativeTrigger);
+  }, [handleHardwareTrigger]);
 
   // Volume button trigger (Android only via Capacitor)
   const { isSupported: volumeButtonSupported } = useVolumeButtonTrigger({
