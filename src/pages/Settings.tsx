@@ -16,6 +16,7 @@ interface SettingsProps {
   onVoiceEnabledChange: (enabled: boolean) => void;
   isVolumeButtonEnabled: boolean;
   onVolumeButtonEnabledChange: (enabled: boolean) => void;
+  isBackgroundServiceActive?: boolean;
 }
 
 const Settings = ({
@@ -25,6 +26,7 @@ const Settings = ({
   onVoiceEnabledChange,
   isVolumeButtonEnabled,
   onVolumeButtonEnabledChange,
+  isBackgroundServiceActive,
 }: SettingsProps) => {
   const [localWakeWord, setLocalWakeWord] = useState(wakeWord);
   const [isSaving, setIsSaving] = useState(false);
@@ -134,12 +136,12 @@ const Settings = ({
             Press both volume buttons simultaneously to trigger an alert
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <Label htmlFor="volume-toggle" className="flex flex-col gap-1">
               <span>Enable volume button trigger</span>
               <span className="text-xs text-muted-foreground font-normal">
-                Works in background on Android
+                Press Vol+ and Vol- together to trigger
               </span>
             </Label>
             <Switch
@@ -147,6 +149,16 @@ const Settings = ({
               checked={isVolumeButtonEnabled}
               onCheckedChange={onVolumeButtonEnabledChange}
             />
+          </div>
+          
+          {/* Background service status indicator */}
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
+            <div className={`w-2 h-2 rounded-full ${isBackgroundServiceActive ? 'bg-green-500 animate-pulse' : 'bg-muted-foreground'}`} />
+            <span className="text-sm text-muted-foreground">
+              {isBackgroundServiceActive 
+                ? "Background service active - works when app closed" 
+                : "Background service inactive"}
+            </span>
           </div>
         </CardContent>
       </Card>
