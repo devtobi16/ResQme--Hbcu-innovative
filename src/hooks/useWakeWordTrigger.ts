@@ -25,7 +25,21 @@ export const useWakeWordTrigger = ({
           (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
         const { Capacitor } = await import("@capacitor/core");
-        setIsSupported(Capacitor.isNativePlatform() || !!SpeechRecognitionClass);
+
+        if (Capacitor.isNativePlatform()) {
+          // Native platform can report "native" even if the plugin wasn't synced/registered.
+          // Verify the plugin is actually available.
+          try {
+            await WakeWord.isServiceRunning();
+            setIsSupported(true);
+          } catch (e) {
+            console.warn("WakeWord plugin unavailable on this build:", e);
+            setIsSupported(false);
+          }
+          return;
+        }
+
+        setIsSupported(!!SpeechRecognitionClass);
       } catch {
         setIsSupported(false);
       }
