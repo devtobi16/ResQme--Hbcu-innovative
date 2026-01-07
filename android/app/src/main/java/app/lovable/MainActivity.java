@@ -19,7 +19,10 @@ public class MainActivity extends BridgeActivity {
     private static final String TAG = "MainActivity";
     private static final String PREFS_NAME = "ResQMePrefs";
     private static final String KEY_SERVICE_ENABLED = "background_service_enabled";
+    private static final String WAKE_PREFS_NAME = "resqme_settings";
+    private static final String KEY_WAKE_ENABLED = "wake_word_enabled";
     private static final int REQ_POST_NOTIFICATIONS = 10001;
+    private static final int REQ_RECORD_AUDIO = 10002;
 
     private VolumeButtonPlugin volumeButtonPlugin;
     private BroadcastReceiver sosReceiver;
@@ -29,12 +32,16 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Ensure Android 13+ can show the required foreground notification.
+        // Ensure Android 13+ can show the required foreground notifications.
         maybeRequestNotificationPermission();
+
+        // Ensure we have mic permission for voice activation + SOS recording.
+        maybeRequestAudioPermission();
 
         // If the user previously enabled the background trigger, restart it early
         // (works even before the web app loads / even on /auth).
         maybeStartVolumeButtonServiceIfEnabled();
+        maybeStartWakeWordServiceIfEnabled();
 
         // Register the volume button plugin
         registerPlugin(VolumeButtonPlugin.class);
@@ -49,15 +56,30 @@ public class MainActivity extends BridgeActivity {
         handleIntent(getIntent());
     }
 
-    private void maybeRequestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            try {
-                if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, REQ_POST_NOTIFICATIONS);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to request POST_NOTIFICATIONS", e);
+    private void maybeRequestAudioPermission() {
+        try {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQ_RECORD_AUDIO);
             }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to request RECORD_AUDIO", e);
+        }
+    }
+
+    private void maybeStartWakeWordServiceIfEnabled() {
+        try {
+            SharedPreferences prefs = getSharedPreferences(WAKE_PREFS_NAME, Context.MODE_PRIVATE);
+            boolean enabled = prefs.getBoolean(KEY_WAKE_ENABLED, false);
+            if (!enabled) return;
+
+            Intent serviceIntent = new Intent(this, WakeWordService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent);
+            } else {
+                startService(serviceIntent);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to auto-start WakeWordService", e);
         }
     }
 
