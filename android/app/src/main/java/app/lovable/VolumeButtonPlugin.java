@@ -17,7 +17,7 @@ public class VolumeButtonPlugin extends Plugin {
     private boolean volumeDownPressed = false;
     private long lastVolumeUpTime = 0;
     private long lastVolumeDownTime = 0;
-    private static final long SIMULTANEOUS_THRESHOLD = 300; // 300ms window
+    private static final long SIMULTANEOUS_THRESHOLD = 500; // 500ms window (match background service)
 
     public boolean handleKeyEvent(KeyEvent event) {
         int action = event.getAction();
