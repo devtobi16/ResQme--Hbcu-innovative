@@ -20,11 +20,12 @@ export const useWakeWordTrigger = ({
   useEffect(() => {
     const checkSupport = async () => {
       try {
-        // Check if we're on a platform that supports wake word detection
+        // Web: SpeechRecognition, Native (Capacitor): our WakeWord plugin.
         const SpeechRecognitionClass =
           (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        
-        setIsSupported(!!SpeechRecognitionClass);
+
+        const { Capacitor } = await import("@capacitor/core");
+        setIsSupported(Capacitor.isNativePlatform() || !!SpeechRecognitionClass);
       } catch {
         setIsSupported(false);
       }
@@ -62,7 +63,8 @@ export const useWakeWordTrigger = ({
 
     return () => {
       listenerRef.current?.remove();
-      WakeWord.stopService().catch(console.error);
+      // IMPORTANT: do NOT stop the native service on unmount.
+      // It must keep running in the background when the user has enabled voice activation.
       setIsListening(false);
     };
   }, [isSupported, enabled, currentWakeWord, onTrigger]);
