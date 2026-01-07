@@ -2,6 +2,7 @@ package app.lovable;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.view.KeyEvent;
 
@@ -78,14 +79,19 @@ public class VolumeButtonPlugin extends Plugin {
     @PluginMethod
     public void startBackgroundService(PluginCall call) {
         Context context = getContext();
+
+        // Persist user's choice so BootReceiver/MainActivity can restart it later.
+        SharedPreferences prefs = context.getSharedPreferences("ResQMePrefs", Context.MODE_PRIVATE);
+        prefs.edit().putBoolean("background_service_enabled", true).apply();
+
         Intent serviceIntent = new Intent(context, VolumeButtonService.class);
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(serviceIntent);
         } else {
             context.startService(serviceIntent);
         }
-        
+
         JSObject ret = new JSObject();
         ret.put("started", true);
         call.resolve(ret);
@@ -94,9 +100,13 @@ public class VolumeButtonPlugin extends Plugin {
     @PluginMethod
     public void stopBackgroundService(PluginCall call) {
         Context context = getContext();
+
+        SharedPreferences prefs = context.getSharedPreferences("ResQMePrefs", Context.MODE_PRIVATE);
+        prefs.edit().putBoolean("background_service_enabled", false).apply();
+
         Intent serviceIntent = new Intent(context, VolumeButtonService.class);
         context.stopService(serviceIntent);
-        
+
         JSObject ret = new JSObject();
         ret.put("stopped", true);
         call.resolve(ret);
