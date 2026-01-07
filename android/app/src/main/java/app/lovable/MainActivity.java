@@ -56,6 +56,18 @@ public class MainActivity extends BridgeActivity {
         handleIntent(getIntent());
     }
 
+    private void maybeRequestNotificationPermission() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, REQ_POST_NOTIFICATIONS);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to request POST_NOTIFICATIONS", e);
+        }
+    }
+
     private void maybeRequestAudioPermission() {
         try {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
