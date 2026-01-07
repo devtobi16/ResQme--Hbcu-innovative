@@ -14,32 +14,44 @@ export const VoiceCommandIndicator = ({
   onToggle,
   transcript,
 }: VoiceCommandIndicatorProps) => {
-  if (!isSupported) return null;
+  const supported = isSupported;
 
   return (
     <div className="flex flex-col items-center gap-2">
       <button
-        onClick={onToggle}
+        onClick={() => {
+          if (!supported) return;
+          onToggle();
+        }}
+        disabled={!supported}
+        aria-disabled={!supported}
         className={cn(
           "w-14 h-14 rounded-full flex items-center justify-center",
           "transition-all duration-300",
-          isListening
-            ? "bg-secondary/20 border-2 border-secondary animate-pulse"
-            : "bg-card border border-border hover:bg-card/80"
+          !supported
+            ? "bg-card border border-border opacity-50 cursor-not-allowed"
+            : isListening
+              ? "bg-secondary/20 border-2 border-secondary animate-pulse"
+              : "bg-card border border-border hover:bg-card/80"
         )}
+        title={!supported ? "Voice activation is not available in this preview/browser" : undefined}
       >
-        {isListening ? (
+        {isListening && supported ? (
           <Mic className="w-6 h-6 text-secondary" />
         ) : (
           <MicOff className="w-6 h-6 text-muted-foreground" />
         )}
       </button>
-      
+
       <div className="text-center">
         <p className="text-xs text-muted-foreground">
-          {isListening ? 'Say "ResQMe help"' : "Voice command off"}
+          {!supported
+            ? "Voice activation unavailable here"
+            : isListening
+              ? 'Say "ResQMe help"'
+              : "Voice command off"}
         </p>
-        {transcript && isListening && (
+        {supported && transcript && isListening && (
           <p className="text-xs text-secondary mt-1 max-w-[200px] truncate">
             Heard: {transcript}
           </p>
