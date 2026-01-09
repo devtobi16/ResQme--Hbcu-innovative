@@ -404,11 +404,14 @@ const Index = () => {
     toast({ title: "Alert Cancelled", description: "False alarm prevented" });
   };
 
-  const toggleVoiceListening = () => {
+  const toggleVoiceListening = async () => {
+    console.log("toggleVoiceListening called. Current state:", isWakeWordListening, "Supported:", wakeWordSupported);
     if (isWakeWordListening) {
-      stopWakeWord();
+      await stopWakeWord();
+      toast({ title: "Voice Command Off", description: "Wake word detection stopped" });
     } else {
-      startWakeWord();
+      await startWakeWord();
+      toast({ title: "Voice Command On", description: `Listening for "${currentWakeWord} help"` });
     }
   };
 

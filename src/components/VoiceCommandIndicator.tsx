@@ -20,6 +20,7 @@ export const VoiceCommandIndicator = ({
     <div className="flex flex-col items-center gap-2">
       <button
         onClick={() => {
+          console.log("Voice toggle clicked. Supported:", supported, "isListening:", isListening);
           if (!supported) return;
           onToggle();
         }}
@@ -27,12 +28,12 @@ export const VoiceCommandIndicator = ({
         aria-disabled={!supported}
         className={cn(
           "w-14 h-14 rounded-full flex items-center justify-center",
-          "transition-all duration-300",
+          "transition-all duration-300 active:scale-95",
           !supported
             ? "bg-card border border-border opacity-50 cursor-not-allowed"
             : isListening
               ? "bg-secondary/20 border-2 border-secondary animate-pulse"
-              : "bg-card border border-border hover:bg-card/80"
+              : "bg-card border border-border hover:bg-card/80 active:bg-card/60"
         )}
         title={!supported ? "Voice activation is not available in this preview/browser" : undefined}
       >
