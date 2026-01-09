@@ -181,8 +181,19 @@ export const useWakeWordTrigger = ({
   }, [mode]);
 
   const startListening = useCallback(async () => {
-    if (!isSupported) return;
+    if (!isSupported) {
+      console.warn("Wake word not supported");
+      return;
+    }
     try {
+      // Request microphone permission first (required for both native and web)
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (permErr) {
+        console.error("Microphone permission denied:", permErr);
+        return;
+      }
+
       if (mode === "native") {
         await WakeWord.startService({ wakeWord: currentWakeWord });
         setIsListening(true);
