@@ -185,25 +185,30 @@ export const useWakeWordTrigger = ({
       console.warn("Wake word not supported");
       return;
     }
+
     try {
-      // Request microphone permission first (required for both native and web)
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (permErr) {
-        console.error("Microphone permission denied:", permErr);
+      // Web Speech requires microphone permission via the browser.
+      if (mode === "web_speech") {
+        try {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (permErr) {
+          console.error("Microphone permission denied (web speech):", permErr);
+          setIsListening(false);
+          return;
+        }
+
+        startWebSpeech();
         return;
       }
 
+      // Native mode: permission is handled by the Android app permission flow.
       if (mode === "native") {
         await WakeWord.startService({ wakeWord: currentWakeWord });
         setIsListening(true);
-        return;
-      }
-      if (mode === "web_speech") {
-        startWebSpeech();
       }
     } catch (error) {
       console.error("Failed to start listening:", error);
+      setIsListening(false);
     }
   }, [isSupported, mode, currentWakeWord, startWebSpeech]);
 
