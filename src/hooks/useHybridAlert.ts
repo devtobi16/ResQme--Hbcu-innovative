@@ -1,273 +1,263 @@
-import { useCallback, useEffect, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useOfflineAlertQueue, OfflineAlert } from "@/hooks/useOfflineAlertQueue";
-import { useNativeSms } from "@/hooks/useNativeSms";
-import { useEmergencyAlert } from "@/hooks/useEmergencyAlert";
-import { useToast } from "@/hooks/use-toast";
-import { reverseGeocode } from "@/hooks/useReverseGeocode";
+import { useCallback, useRef, useState } from 'react';
+import { useNetworkState } from '@react-native-community/hooks';
+import { useMutation } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import { sendEmergencySMS } from '@/services/smsService';
 
-interface UseHybridAlertOptions {
-  userId: string | null;
-  userName: string;
-  onAlertCreated?: (alertId: string) => void;
-  onSyncComplete?: () => void;
+interface HybridAlertConfig {
+  userId: string;
+  phoneNumber: string;
+  contactPhoneNumbers: string[];
+  location: { latitude: number; longitude: number };
+  alertType: 'emergency' | 'sos' | 'panic';
 }
 
-export const useHybridAlert = ({
-  userId,
-  userName,
-  onAlertCreated,
-  onSyncComplete,
-}: UseHybridAlertOptions) => {
-  const { toast } = useToast();
-  const syncingRef = useRef(false);
+interface HybridAlertResponse {
+  success: boolean;
+  alertId: string;
+  smsSent: boolean;
+  notificationSent: boolean;
+  fallbackUsed: boolean;
+}
 
-  const {
-    isOnline,
-    pendingAlerts,
-    queueAlert,
-    updateAlert,
-    markAsSynced,
-    getAlert,
-  } = useOfflineAlertQueue();
+export const useHybridAlert = () => {
+  const { isConnected } = useNetworkState();
+  const [isAlertActive, setIsAlertActive] = useState(false);
+  const alertTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const smsSentRef = useRef(false);
 
-  const {
-    isAvailable: nativeSmsAvailable,
-    sendEmergencySms,
-  } = useNativeSms({
-    onSuccess: (count) => {
-      toast({
-        title: "SMS Sent",
-        description: `Emergency message sent to ${count} contact(s)`,
-      });
-    },
-    onError: (error) => {
-      console.error("Native SMS error:", error);
+  const sendAlertMutation = useMutation({
+    mutationFn: async (config: HybridAlertConfig): Promise<HybridAlertResponse> => {
+      const alertId = `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      let notificationSent = false;
+      let smsSent = false;
+      let fallbackUsed = false;
+
+      try {
+        // If offline, immediately send fallback SMS without waiting
+        if (!isConnected) {
+          console.log('[useHybridAlert] Offline detected - sending fallback SMS immediately');
+          smsSent = await sendEmergencySMS({
+            phoneNumbers: config.contactPhoneNumbers,
+            userId: config.userId,
+            location: config.location,
+            alertType: config.alertType,
+            timestamp: new Date().toISOString(),
+            isOffline: true,
+          }).catch(error => {
+            console.error('[useHybridAlert] Fallback SMS failed:', error);
+            return false;
+          });
+          fallbackUsed = true;
+          smsSentRef.current = smsSent;
+
+          // Store alert locally for sync when online
+          await storeAlertLocally({
+            alertId,
+            ...config,
+            timestamp: new Date().toISOString(),
+            status: 'pending_sync',
+          });
+
+          return {
+            success: smsSent,
+            alertId,
+            smsSent,
+            notificationSent: false,
+            fallbackUsed: true,
+          };
+        }
+
+        // Online: Send through normal channels first
+        try {
+          // Send push notification
+          const notificationResponse = await supabase.functions.invoke(
+            'send-emergency-notification',
+            {
+              body: {
+                userId: config.userId,
+                alertId,
+                contactPhoneNumbers: config.contactPhoneNumbers,
+                location: config.location,
+                alertType: config.alertType,
+                timestamp: new Date().toISOString(),
+              },
+            }
+          );
+
+          if (notificationResponse.error) {
+            console.warn('[useHybridAlert] Notification failed:', notificationResponse.error);
+          } else {
+            notificationSent = true;
+          }
+        } catch (notificationError) {
+          console.warn('[useHybridAlert] Notification error:', notificationError);
+        }
+
+        // Send SMS as backup even when online
+        try {
+          smsSent = await sendEmergencySMS({
+            phoneNumbers: config.contactPhoneNumbers,
+            userId: config.userId,
+            location: config.location,
+            alertType: config.alertType,
+            timestamp: new Date().toISOString(),
+            isOffline: false,
+          });
+        } catch (smsError) {
+          console.warn('[useHybridAlert] SMS error:', smsError);
+          smsSent = false;
+        }
+
+        // Store alert in database
+        const { error: dbError } = await supabase.from('alerts').insert({
+          id: alertId,
+          user_id: config.userId,
+          alert_type: config.alertType,
+          location: config.location,
+          contact_phone_numbers: config.contactPhoneNumbers,
+          notification_sent: notificationSent,
+          sms_sent: smsSent,
+          created_at: new Date().toISOString(),
+          status: 'active',
+        });
+
+        if (dbError) {
+          console.error('[useHybridAlert] Database error:', dbError);
+          // Don't fail the entire alert if database fails
+        }
+
+        return {
+          success: notificationSent || smsSent,
+          alertId,
+          smsSent,
+          notificationSent,
+          fallbackUsed: false,
+        };
+      } catch (error) {
+        console.error('[useHybridAlert] Unexpected error:', error);
+        // Final fallback: attempt SMS
+        try {
+          smsSent = await sendEmergencySMS({
+            phoneNumbers: config.contactPhoneNumbers,
+            userId: config.userId,
+            location: config.location,
+            alertType: config.alertType,
+            timestamp: new Date().toISOString(),
+            isOffline: !isConnected,
+          });
+          fallbackUsed = true;
+        } catch (smsError) {
+          console.error('[useHybridAlert] Final fallback SMS failed:', smsError);
+        }
+
+        return {
+          success: smsSent,
+          alertId,
+          smsSent,
+          notificationSent: false,
+          fallbackUsed: true,
+        };
+      }
     },
   });
 
-  const { processEmergency } = useEmergencyAlert();
+  const startAlert = useCallback(
+    async (config: HybridAlertConfig) => {
+      setIsAlertActive(true);
+      smsSentRef.current = false;
 
-  // Sync pending alerts when coming back online
-  useEffect(() => {
-    if (isOnline && pendingAlerts.length > 0 && userId && !syncingRef.current) {
-      syncPendingAlerts();
-    }
-  }, [isOnline, pendingAlerts.length, userId]);
-
-  const syncPendingAlerts = useCallback(async () => {
-    if (syncingRef.current || !userId) return;
-    
-    syncingRef.current = true;
-    
-    for (const alert of pendingAlerts) {
-      try {
-        // Skip if already synced
-        if (alert.synced) continue;
-
-        // Get address from coordinates
-        let address: string | null = null;
-        if (alert.latitude && alert.longitude) {
-          address = await reverseGeocode(alert.latitude, alert.longitude);
-        }
-
-        // Create alert in database
-        const { data: alertData } = await supabase.from("alerts").insert({
-          user_id: userId,
-          status: "active",
-          latitude: alert.latitude,
-          longitude: alert.longitude,
-          address,
-          trigger_type: "button",
-        }).select().single();
-
-        if (alertData && alert.audioBlob) {
-          // Process the audio with AI
-          const buffer = await alert.audioBlob.arrayBuffer();
-          const bytes = new Uint8Array(buffer);
-          let binary = "";
-          for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i]);
-          }
-          const audioBase64 = btoa(binary);
-
-          await processEmergency(
-            audioBase64,
-            alertData.id,
-            userId,
-            alert.latitude && alert.longitude 
-              ? { lat: alert.latitude, lng: alert.longitude } 
-              : null,
-            alert.audioMimeType
-          );
-
-          toast({
-            title: "Alert Synced",
-            description: "Queued emergency processed and contacts notified with AI analysis",
-          });
-        }
-
-        await markAsSynced(alert.id);
-      } catch (error) {
-        console.error("Failed to sync alert:", error);
+      // Clear any existing timeout
+      if (alertTimeoutRef.current) {
+        clearTimeout(alertTimeoutRef.current);
       }
-    }
 
-    syncingRef.current = false;
-    onSyncComplete?.();
-  }, [pendingAlerts, userId, processEmergency, markAsSynced, toast, onSyncComplete]);
-
-  const triggerOfflineAlert = useCallback(async (
-    location: { lat: number; lng: number } | null,
-    audioBlob?: Blob,
-    audioMimeType?: string
-  ): Promise<string> => {
-    const alertId = crypto.randomUUID();
-
-    // Queue the alert with audio for later processing
-    await queueAlert({
-      id: alertId,
-      oderId: userId || "",
-      latitude: location?.lat || null,
-      longitude: location?.lng || null,
-      timestamp: new Date().toISOString(),
-      nativeSmsSent: false,
-      audioBlob,
-      audioMimeType,
-      userName,
-    });
-
-    // Send native SMS immediately if available
-    if (nativeSmsAvailable) {
       try {
-        const { data: contacts } = await supabase
-          .from("emergency_contacts")
-          .select("name, phone_number")
-          .eq("user_id", userId || "");
-
-        if (contacts && contacts.length > 0) {
-          const result = await sendEmergencySms(
-            contacts,
-            userName,
-            location?.lat || null,
-            location?.lng || null,
-            "This is an automated alert. Audio recording will be analyzed when connection is restored."
-          );
-
-          if (result.success) {
-            await updateAlert(alertId, { nativeSmsSent: true });
-            
-            toast({
-              title: "Emergency SMS Sent",
-              description: `Alert sent to ${result.sentCount} contact(s). Full analysis pending.`,
-              variant: "destructive",
-            });
-          }
-        }
+        const result = await sendAlertMutation.mutateAsync(config);
+        console.log('[useHybridAlert] Alert sent:', result);
+        return result;
       } catch (error) {
-        console.error("Failed to fetch contacts for native SMS:", error);
-        
-        // Fallback: try to use cached contacts from localStorage
-        toast({
-          title: "Alert Queued",
-          description: "Will send when connection is restored",
-          variant: "destructive",
-        });
+        console.error('[useHybridAlert] Failed to send alert:', error);
+        throw error;
       }
-    } else {
-      toast({
-        title: "Alert Cached",
-        description: "Native SMS unavailable. Will send when online.",
-        variant: "destructive",
-      });
-    }
+    },
+    [sendAlertMutation]
+  );
 
-    onAlertCreated?.(alertId);
-    return alertId;
-  }, [
-    userId,
-    userName,
-    nativeSmsAvailable,
-    queueAlert,
-    updateAlert,
-    sendEmergencySms,
-    toast,
-    onAlertCreated,
-  ]);
+  const cancelAlert = useCallback(
+    async (alertId: string) => {
+      setIsAlertActive(false);
 
-  const triggerOnlineAlert = useCallback(async (
-    location: { lat: number; lng: number } | null,
-    audioBlob?: Blob,
-    audioMimeType?: string
-  ): Promise<string | null> => {
-    if (!userId) return null;
+      if (alertTimeoutRef.current) {
+        clearTimeout(alertTimeoutRef.current);
+      }
 
-    // Get address from coordinates
-    let address: string | null = null;
-    if (location?.lat && location?.lng) {
-      address = await reverseGeocode(location.lat, location.lng);
-    }
+      try {
+        const { error } = await supabase
+          .from('alerts')
+          .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+          .eq('id', alertId);
 
-    const { data } = await supabase.from("alerts").insert({
-      user_id: userId,
-      status: "active",
-      latitude: location?.lat,
-      longitude: location?.lng,
-      address,
-      trigger_type: "button",
-    }).select().single();
+        if (error) {
+          console.error('[useHybridAlert] Failed to cancel alert:', error);
+          throw error;
+        }
 
-    if (!data) return null;
+        return { success: true, alertId };
+      } catch (error) {
+        console.error('[useHybridAlert] Error cancelling alert:', error);
+        throw error;
+      }
+    },
+    []
+  );
 
-    // Create location entry
-    if (location) {
-      await supabase.from("alert_locations").insert({
-        alert_id: data.id,
-        latitude: location.lat,
-        longitude: location.lng,
-        accuracy: null,
-      });
-    }
+  const confirmAlert = useCallback(
+    async (alertId: string) => {
+      try {
+        const { error } = await supabase
+          .from('alerts')
+          .update({
+            status: 'confirmed',
+            confirmed_at: new Date().toISOString(),
+          })
+          .eq('id', alertId);
 
-    // Create notification log entries
-    const { data: contacts } = await supabase
-      .from("emergency_contacts")
-      .select("id")
-      .eq("user_id", userId);
+        if (error) {
+          throw error;
+        }
 
-    if (contacts) {
-      const logs = contacts.map((c) => ({
-        alert_id: data.id,
-        contact_id: c.id,
-        notification_type: "push",
-        status: "pending",
-      }));
-      await supabase.from("notification_logs").insert(logs);
-    }
-
-    onAlertCreated?.(data.id);
-    return data.id;
-  }, [userId, onAlertCreated]);
-
-  const triggerAlert = useCallback(async (
-    location: { lat: number; lng: number } | null,
-    audioBlob?: Blob,
-    audioMimeType?: string
-  ): Promise<string | null> => {
-    if (isOnline) {
-      return triggerOnlineAlert(location, audioBlob, audioMimeType);
-    } else {
-      return triggerOfflineAlert(location, audioBlob, audioMimeType);
-    }
-  }, [isOnline, triggerOnlineAlert, triggerOfflineAlert]);
+        setIsAlertActive(false);
+        return { success: true, alertId };
+      } catch (error) {
+        console.error('[useHybridAlert] Error confirming alert:', error);
+        throw error;
+      }
+    },
+    []
+  );
 
   return {
-    isOnline,
-    nativeSmsAvailable,
-    pendingAlerts,
-    triggerAlert,
-    triggerOfflineAlert,
-    triggerOnlineAlert,
-    syncPendingAlerts,
+    startAlert,
+    cancelAlert,
+    confirmAlert,
+    isAlertActive,
+    isPending: sendAlertMutation.isPending,
+    isError: sendAlertMutation.isError,
+    error: sendAlertMutation.error,
   };
 };
+
+// Helper function to store alerts locally
+async function storeAlertLocally(alertData: any) {
+  try {
+    // Using React Native AsyncStorage for local persistence
+    const { AsyncStorage } = await import('@react-native-async-storage/async-storage');
+    const existingAlerts = await AsyncStorage.getItem('pending_alerts');
+    const alerts = existingAlerts ? JSON.parse(existingAlerts) : [];
+    alerts.push(alertData);
+    await AsyncStorage.setItem('pending_alerts', JSON.stringify(alerts));
+  } catch (error) {
+    console.error('[useHybridAlert] Failed to store alert locally:', error);
+  }
+}
