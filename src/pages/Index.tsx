@@ -17,6 +17,7 @@ import { useEmergencyAlert } from "@/hooks/useEmergencyAlert";
 import { useHybridAlert } from "@/hooks/useHybridAlert";
 import { useVolumeButtonTrigger } from "@/hooks/useVolumeButtonTrigger";
 import { useWakeWordTrigger } from "@/hooks/useWakeWordTrigger";
+import { useSpeechTranscription } from "@/hooks/useSpeechTranscription";
 import { reverseGeocode } from "@/hooks/useReverseGeocode";
 
 import { AlertHistory } from "@/components/AlertHistory";
@@ -38,6 +39,7 @@ const Index = () => {
     | {
         audioBase64: string;
         audioMimeType?: string;
+        transcript?: string;
         location: { lat: number; lng: number } | null;
       }
     | null
@@ -50,6 +52,15 @@ const Index = () => {
   
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const {
+    isSupported: transcriptionSupported,
+    isListening: isTranscribing,
+    transcript: transcription,
+    startListening: startTranscribing,
+    stopListening: stopTranscribing,
+    reset: resetTranscription,
+  } = useSpeechTranscription();
   
   // Get user profile for name
   const [userProfile, setUserProfile] = useState<{ full_name: string | null }>({ full_name: null });
@@ -102,16 +113,22 @@ const Index = () => {
       currentAlertId,
       user.id,
       pending.location,
-      pending.audioMimeType
+      pending.audioMimeType,
+      pending.transcript
     );
   }, [currentAlertId, user, processEmergency]);
 
   // Smart recording with silence detection
   const handleRecordingComplete = useCallback(async (audioBlob: Blob, duration: number) => {
     if (!user) return;
-    
+
     console.log(`Recording complete: ${duration}s`);
-    
+
+    // Stop speech transcription once we have audio
+    if (isTranscribing) stopTranscribing();
+
+    const transcriptText = transcription?.trim() || undefined;
+
     // Convert to base64 for backend function
     const buffer = await audioBlob.arrayBuffer();
     const bytes = new Uint8Array(buffer);
@@ -127,6 +144,7 @@ const Index = () => {
       pendingRecordingRef.current = {
         audioBase64,
         audioMimeType,
+        transcript: transcriptText,
         location,
       };
 
@@ -138,8 +156,8 @@ const Index = () => {
     }
 
     // Process the emergency
-    await processEmergency(audioBase64, currentAlertId, user.id, location, audioMimeType);
-  }, [currentAlertId, user, location, processEmergency, toast]);
+    await processEmergency(audioBase64, currentAlertId, user.id, location, audioMimeType, transcriptText);
+  }, [currentAlertId, user, location, processEmergency, toast, transcription, isTranscribing, stopTranscribing]);
 
   const { 
     isRecording, 
@@ -331,9 +349,12 @@ const Index = () => {
     setIsAlertActive(true);
     setAlertStartTime(new Date());
 
+    resetTranscription();
+
     // Start audio recording
     try {
       await startRecording();
+      if (transcriptionSupported) startTranscribing();
     } catch (e) {
       console.error("Failed to start recording:", e);
     }
@@ -360,6 +381,10 @@ const Index = () => {
   const cancelAlert = async () => {
     setIsAlertActive(false);
     setAlertStartTime(null);
+
+    stopTranscribing();
+    resetTranscription();
+
     stopRecording();
     resetEmergencyAlert();
 

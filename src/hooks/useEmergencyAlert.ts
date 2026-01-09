@@ -30,16 +30,17 @@ export const useEmergencyAlert = ({ onComplete, onError }: UseEmergencyAlertOpti
     alertId: string,
     userId: string,
     location: { lat: number; lng: number } | null,
-    audioMimeType?: string
+    audioMimeType?: string,
+    transcript?: string
   ) => {
     alertIdRef.current = alertId;
-    
+
     setState(prev => ({ ...prev, isProcessing: true }));
 
     try {
       console.log("Processing emergency audio...");
-      
-      // Step 1: Analyze the emergency audio
+
+      // Step 1: Analyze the emergency audio + (optional) transcript
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke(
         "analyze-emergency",
         {
@@ -50,6 +51,7 @@ export const useEmergencyAlert = ({ onComplete, onError }: UseEmergencyAlertOpti
             userId,
             latitude: location?.lat,
             longitude: location?.lng,
+            transcript,
           },
         }
       );
