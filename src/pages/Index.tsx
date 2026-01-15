@@ -9,6 +9,7 @@ import { ActiveAlertBanner } from "@/components/ActiveAlertBanner";
 import { CancelCountdown } from "@/components/CancelCountdown";
 import { VoiceCommandIndicator } from "@/components/VoiceCommandIndicator";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
+import { SummaryReviewDialog } from "@/components/SummaryReviewDialog";
 import { pendingSosKey } from "@/components/NativeSOSTriggerListener";
 import { Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +22,8 @@ import { useSpeechTranscription } from "@/hooks/useSpeechTranscription";
 import { reverseGeocode } from "@/hooks/useReverseGeocode";
 
 import { AlertHistory } from "@/components/AlertHistory";
+
+const MAX_RECORDING_DURATION = 300; // 5 minutes
 
 const Contacts = lazy(() => import("@/pages/Contacts"));
 const Settings = lazy(() => import("@/pages/Settings"));
@@ -69,11 +72,17 @@ const Index = () => {
   const { 
     isProcessing, 
     isSendingNotifications, 
+    isAwaitingApproval,
     summary,
     processEmergency,
+    approveAndSend,
+    cancelSending,
     reset: resetEmergencyAlert,
   } = useEmergencyAlert({
     onComplete: () => {
+      setIsAlertActive(false);
+      setAlertStartTime(null);
+      setCurrentAlertId(null);
       toast({
         title: "Alert Sent",
         description: "Emergency contacts have been notified",
@@ -167,7 +176,7 @@ const Index = () => {
     startRecording, 
     stopRecording,
   } = useSmartRecording({
-    maxDuration: 300, // 5 minutes max recording
+    maxDuration: MAX_RECORDING_DURATION,
     silenceTimeout: 30, // Stop after 30 seconds of silence
     onRecordingComplete: handleRecordingComplete,
     onSilenceDetected: () => {
@@ -399,6 +408,17 @@ const Index = () => {
     toast({ title: "Alert Cancelled", description: "Emergency alert has been deactivated" });
   };
 
+  const handleApproveSummary = async (editedSummary: string) => {
+    await approveAndSend(editedSummary);
+  };
+
+  const handleCancelSummary = async () => {
+    await cancelSending();
+    setIsAlertActive(false);
+    setAlertStartTime(null);
+    setCurrentAlertId(null);
+  };
+
   const handleCancelCountdown = () => {
     setShowCancelWindow(false);
     toast({ title: "Alert Cancelled", description: "False alarm prevented" });
@@ -429,16 +449,25 @@ const Index = () => {
 
       <OfflineIndicator isOnline={isOnline} pendingCount={pendingAlerts.length} />
 
-      {isAlertActive && alertStartTime && currentAlertId && (
+      {isAlertActive && alertStartTime && currentAlertId && !isAwaitingApproval && (
         <ActiveAlertBanner
           alertId={currentAlertId}
           startedAt={alertStartTime}
           isRecording={isRecording}
           recordingDuration={recordingDuration}
+          maxRecordingDuration={MAX_RECORDING_DURATION}
           silenceDuration={silenceDuration}
           onCancel={cancelAlert}
         />
       )}
+
+      <SummaryReviewDialog
+        isOpen={isAwaitingApproval}
+        summary={summary || ""}
+        isProcessing={isProcessing}
+        onApprove={handleApproveSummary}
+        onCancel={handleCancelSummary}
+      />
 
       <div className={`px-4 py-6 max-w-lg mx-auto ${isAlertActive ? "pt-32" : !isOnline ? "pt-20" : ""}`}>
         {activeTab === "home" && (

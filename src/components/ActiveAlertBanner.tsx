@@ -2,12 +2,14 @@ import { AlertTriangle, X, Mic, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { RecordingProgressBar } from "./RecordingProgressBar";
 
 interface ActiveAlertBannerProps {
   alertId: string;
   startedAt: Date;
   isRecording: boolean;
   recordingDuration?: number;
+  maxRecordingDuration?: number;
   silenceDuration?: number;
   onCancel: () => void;
 }
@@ -17,6 +19,7 @@ export const ActiveAlertBanner = ({
   startedAt,
   isRecording,
   recordingDuration = 0,
+  maxRecordingDuration = 300,
   silenceDuration = 0,
   onCancel,
 }: ActiveAlertBannerProps) => {
@@ -53,21 +56,30 @@ export const ActiveAlertBanner = ({
             </Button>
           </div>
 
-          <div className="flex items-center gap-4 mt-3 pt-3 border-t border-primary-foreground/20">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-primary-foreground/80" />
-              <span className="text-xs text-primary-foreground/80">
-                Location sharing
-              </span>
-            </div>
-            {isRecording && (
+          <div className="mt-3 pt-3 border-t border-primary-foreground/20 space-y-3">
+            <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary-foreground animate-pulse" />
-                <Mic className="w-4 h-4 text-primary-foreground/80" />
+                <MapPin className="w-4 h-4 text-primary-foreground/80" />
                 <span className="text-xs text-primary-foreground/80">
-                  Recording {recordingDuration}s {silenceDuration > 0 && `(silence: ${silenceDuration}s/10s)`}
+                  Location sharing
                 </span>
               </div>
+              {isRecording && (
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-primary-foreground animate-pulse" />
+                  <Mic className="w-4 h-4 text-primary-foreground/80" />
+                  <span className="text-xs text-primary-foreground/80">
+                    Recording {silenceDuration > 0 && `(silence: ${silenceDuration}s/30s)`}
+                  </span>
+                </div>
+              )}
+            </div>
+            
+            {isRecording && (
+              <RecordingProgressBar
+                currentDuration={recordingDuration}
+                maxDuration={maxRecordingDuration}
+              />
             )}
           </div>
         </div>
