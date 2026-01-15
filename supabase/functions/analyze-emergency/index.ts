@@ -74,12 +74,50 @@ serve(async (req) => {
 
     const hasTranscript = typeof transcript === "string" && transcript.trim().length > 0;
 
-    const systemPrompt =
-      "You are an emergency response assistant. Write clear, concise emergency alerts suitable for SMS.";
+    const systemPrompt = `You are an emergency response AI assistant. Your job is to analyze emergency audio transcripts and generate clear, actionable SMS alerts.
+
+When analyzing, pay attention to:
+- Emotional cues (panic, fear, calmness, distress, crying, screaming)
+- Context clues (accident, attack, medical emergency, natural disaster)
+- Urgency level based on tone and content
+- Any names, locations, or specific threats mentioned
+
+Write SMS-friendly messages (under 300 characters) that convey urgency appropriately.`;
 
     const userPrompt = hasTranscript
-      ? `An SOS alert was triggered at this location:\n- Latitude: ${latitude ?? "Unknown"}\n- Longitude: ${longitude ?? "Unknown"}\n\nHere is a rough speech-to-text transcript from the user's recording (may contain errors):\n"""\n${transcript}\n"""\n\nTask: Summarize the situation in 2-3 sentences max for emergency contacts. Include: (1) likely emergency type, (2) urgency, (3) immediate action. If unclear, assume high urgency and advise calling local emergency services and trying to contact the user.`
-      : `An SOS alert was triggered at this location:\n- Latitude: ${latitude ?? "Unknown"}\n- Longitude: ${longitude ?? "Unknown"}\n\nNo transcript is available. Write a general, high-urgency emergency message in 2-3 sentences for emergency contacts, advising them to call local emergency services and try to reach the user immediately.`;
+      ? `🚨 SOS ALERT TRIGGERED
+
+LOCATION: ${latitude && longitude ? `${latitude}, ${longitude}` : "Unknown"}
+${latitude && longitude ? `MAP: https://maps.google.com/?q=${latitude},${longitude}` : ""}
+
+AUDIO TRANSCRIPT (may contain speech recognition errors):
+"""
+${transcript}
+"""
+
+Analyze the transcript for:
+1. Type of emergency (medical, assault, accident, unknown)
+2. Emotional state of the person (panicked, calm, distressed, injured)
+3. Any specific threats or dangers mentioned
+4. Urgency level (critical/high/moderate)
+
+Then write a 2-3 sentence emergency SMS that:
+- States the likely emergency type
+- Conveys appropriate urgency based on emotional tone
+- Instructs contacts to call emergency services AND try reaching the person
+- Includes the location if available`
+      : `🚨 SOS ALERT TRIGGERED
+
+LOCATION: ${latitude && longitude ? `${latitude}, ${longitude}` : "Unknown"}
+${latitude && longitude ? `MAP: https://maps.google.com/?q=${latitude},${longitude}` : ""}
+
+No audio transcript available (silent alert or recording issue).
+
+Write a high-urgency emergency SMS (2-3 sentences) that:
+- Treats this as a potentially serious situation (silent alerts can indicate danger)
+- Instructs contacts to call emergency services immediately
+- Advises trying to reach the person by phone
+- Includes the location if available`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
