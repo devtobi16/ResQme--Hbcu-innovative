@@ -167,7 +167,7 @@ const Index = () => {
     startRecording, 
     stopRecording,
   } = useSmartRecording({
-    maxDuration: 180, // 3 minutes max
+    maxDuration: 300, // 5 minutes max recording
     silenceTimeout: 30, // Stop after 30 seconds of silence
     onRecordingComplete: handleRecordingComplete,
     onSilenceDetected: () => {
