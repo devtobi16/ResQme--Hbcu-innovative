@@ -157,7 +157,7 @@ npm run android:run     # Deploy to connected device
 
 ## 👨‍💻 Author
 
-**Oluwatobi Basokoya**
+**Oluwatobiloba Sokoya**
 
 ---
 
