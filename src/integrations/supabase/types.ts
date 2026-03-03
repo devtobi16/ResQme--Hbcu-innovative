@@ -55,12 +55,14 @@ export type Database = {
           audio_url: string | null
           created_at: string
           deleted_at: string | null
+          duration_seconds: number | null
           id: string
           latitude: number | null
           longitude: number | null
           notes: string | null
           resolved_at: string | null
           status: string
+          transcript: string | null
           trigger_type: string
           triggered_at: string
           user_id: string
@@ -70,12 +72,14 @@ export type Database = {
           audio_url?: string | null
           created_at?: string
           deleted_at?: string | null
+          duration_seconds?: number | null
           id?: string
           latitude?: number | null
           longitude?: number | null
           notes?: string | null
           resolved_at?: string | null
           status?: string
+          transcript?: string | null
           trigger_type?: string
           triggered_at?: string
           user_id: string
@@ -85,12 +89,14 @@ export type Database = {
           audio_url?: string | null
           created_at?: string
           deleted_at?: string | null
+          duration_seconds?: number | null
           id?: string
           latitude?: number | null
           longitude?: number | null
           notes?: string | null
           resolved_at?: string | null
           status?: string
+          transcript?: string | null
           trigger_type?: string
           triggered_at?: string
           user_id?: string
@@ -102,6 +108,7 @@ export type Database = {
           created_at: string
           email: string | null
           id: string
+          is_enabled: boolean | null
           is_primary: boolean | null
           name: string
           phone_number: string
@@ -113,6 +120,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          is_enabled?: boolean | null
           is_primary?: boolean | null
           name: string
           phone_number: string
@@ -124,6 +132,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          is_enabled?: boolean | null
           is_primary?: boolean | null
           name?: string
           phone_number?: string

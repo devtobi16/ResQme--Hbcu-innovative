@@ -8,7 +8,12 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:sync": "npx cap sync android",
+    "cap:run": "npx cap run android",
+    "android:build": "npm run build && npm run cap:sync",
+    "android:run": "npm run android:build && npm run cap:run",
+    "android:open": "npx cap open android"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

@@ -1,6 +1,7 @@
 import { User, Phone, Mail, MoreVertical, Star, Trash2, Edit } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +17,7 @@ interface EmergencyContact {
   email?: string;
   relationship?: string;
   is_primary: boolean;
+  is_enabled?: boolean;
 }
 
 interface EmergencyContactCardProps {
@@ -23,6 +25,7 @@ interface EmergencyContactCardProps {
   onEdit: (contact: EmergencyContact) => void;
   onDelete: (id: string) => void;
   onSetPrimary: (id: string) => void;
+  onToggleEnabled?: (id: string, enabled: boolean) => void;
 }
 
 export const EmergencyContactCard = ({
@@ -30,11 +33,15 @@ export const EmergencyContactCard = ({
   onEdit,
   onDelete,
   onSetPrimary,
+  onToggleEnabled,
 }: EmergencyContactCardProps) => {
+  const isEnabled = contact.is_enabled !== false; // Default to true if undefined
+
   return (
     <Card className={cn(
       "glass-card border-border/50 overflow-hidden transition-all duration-200",
-      contact.is_primary && "border-l-4 border-l-secondary"
+      contact.is_primary && "border-l-4 border-l-secondary",
+      !isEnabled && "opacity-60"
     )}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
@@ -65,35 +72,46 @@ export const EmergencyContactCard = ({
             </div>
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreVertical className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {!contact.is_primary && (
-                <DropdownMenuItem onClick={() => onSetPrimary(contact.id)}>
-                  <Star className="w-4 h-4 mr-2" />
-                  Set as Primary
+          <div className="flex items-center gap-2">
+            {/* Enable/Disable Toggle */}
+            {onToggleEnabled && (
+              <Switch
+                checked={isEnabled}
+                onCheckedChange={(checked) => onToggleEnabled(contact.id, checked)}
+                className="data-[state=checked]:bg-secondary"
+              />
+            )}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {!contact.is_primary && (
+                  <DropdownMenuItem onClick={() => onSetPrimary(contact.id)}>
+                    <Star className="w-4 h-4 mr-2" />
+                    Set as Primary
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => onEdit(contact)}>
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={() => onEdit(contact)}>
-                <Edit className="w-4 h-4 mr-2" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onDelete(contact.id)}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <DropdownMenuItem
+                  onClick={() => onDelete(contact.id)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-3">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
           <a
             href={`tel:${contact.phone_number}`}
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -109,6 +127,13 @@ export const EmergencyContactCard = ({
               <Mail className="w-4 h-4" />
               {contact.email}
             </a>
+          )}
+          
+          {/* Status indicator */}
+          {!isEnabled && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground ml-auto">
+              Disabled
+            </span>
           )}
         </div>
       </CardContent>

@@ -25,64 +25,68 @@ serve(async (req) => {
     const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
 
     if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-      throw new Error("Twilio credentials not configured");
+      throw new Error("Twilio credentials are not set in Supabase Secrets");
     }
 
-    // Create Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get user's emergency contacts
+    // 1. Get user's ENABLED emergency contacts only
     const { data: contacts, error: contactsError } = await supabase
       .from("emergency_contacts")
-      .select("id, name, phone_number")
-      .eq("user_id", userId);
-
-    if (contactsError) {
-      throw new Error(`Failed to fetch contacts: ${contactsError.message}`);
-    }
-
-    if (!contacts || contacts.length === 0) {
-      console.log("No emergency contacts found for user");
-      return new Response(
-        JSON.stringify({ success: false, message: "No emergency contacts configured" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Get user's profile for name
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("full_name")
+      .select("id, name, phone_number, is_enabled")
       .eq("user_id", userId)
-      .single();
+      .neq("is_enabled", false); // Only get enabled contacts (is_enabled = true or null)
 
-    const userName = profile?.full_name || "Your contact";
+    if (contactsError || !contacts || contacts.length === 0) {
+      console.log("No enabled contacts to notify.");
+      return new Response(JSON.stringify({ success: false, message: "No enabled contacts found" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
 
-    // Build Google Maps link
-    const mapLink = latitude && longitude 
-      ? `https://www.google.com/maps?q=${latitude},${longitude}`
-      : null;
+    console.log(`Found ${contacts.length} enabled contacts to notify`);
 
-    // Construct message
-    const message = `🚨 EMERGENCY ALERT from ${userName}!\n\n${summary}${mapLink ? `\n\n📍 Location: ${mapLink}` : ""}\n\nPlease respond immediately or contact emergency services.`;
+    // 2. Get user's name
+    const { data: profile } = await supabase.from("profiles").select("full_name").eq("user_id", userId).single();
+    const userName = profile?.full_name || "A user";
 
-    console.log(`Sending to ${contacts.length} contacts`);
+    // 3. Prepare message
+    const mapLink = latitude && longitude ? `https://www.google.com/maps?q=${latitude},${longitude}` : null;
+    const timestamp = new Date().toLocaleString("en-US", { 
+      hour: "numeric", 
+      minute: "2-digit",
+      hour12: true 
+    });
+    
+    const message = `🚨 ResQ Me ALERT
+From: ${userName}
+Time: ${timestamp}
+
+${summary}${mapLink ? `
+
+📍 Location: ${mapLink}` : ""}
+
+Please check on them immediately.`;
 
     const results = [];
 
+    // 4. Send to each enabled contact
     for (const contact of contacts) {
       try {
-        // Format phone number (ensure it starts with +)
-        let phoneNumber = contact.phone_number.replace(/\s/g, "");
+        let phoneNumber = contact.phone_number.trim().replace(/\s/g, "");
+        
+        // Smarter phone number handling: If it doesn't have a +, and it's 10 digits, assume +1. 
         if (!phoneNumber.startsWith("+")) {
-          phoneNumber = `+1${phoneNumber}`; // Default to US if no country code
+          if (phoneNumber.length === 10) {
+            phoneNumber = `+1${phoneNumber}`;
+          } else {
+            console.warn(`Phone number ${phoneNumber} might be missing a country code (+)`);
+          }
         }
 
-        // Send SMS via Twilio
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
-        
         const twilioResponse = await fetch(twilioUrl, {
           method: "POST",
           headers: {
@@ -98,59 +102,61 @@ serve(async (req) => {
 
         const twilioData = await twilioResponse.json();
 
-        if (!twilioResponse.ok) {
-          console.error(`Twilio error for ${contact.name}:`, twilioData);
+        if (twilioResponse.ok) {
+          console.log(`Successfully sent to ${contact.name}`);
+          results.push({ name: contact.name, success: true });
           
-          // Log failed notification
-          await supabase.from("notification_logs").upsert({
-            alert_id: alertId,
-            contact_id: contact.id,
-            notification_type: "sms",
-            status: "failed",
-            error_message: twilioData.message || "Twilio error",
-          });
+          // Log success
+          try {
+            await supabase.from("notification_logs").insert({
+              alert_id: alertId,
+              contact_id: contact.id,
+              notification_type: "sms",
+              status: "sent",
+              sent_at: new Date().toISOString()
+            });
+          } catch (logErr) {
+            console.warn("Could not write to notification_logs table");
+          }
 
-          results.push({ contact: contact.name, success: false, error: twilioData.message });
         } else {
-          console.log(`SMS sent to ${contact.name}: ${twilioData.sid}`);
+          console.error(`Twilio rejected ${contact.name}:`, twilioData.message);
+          results.push({ name: contact.name, success: false, error: twilioData.message });
           
-          // Log successful notification
-          await supabase.from("notification_logs").upsert({
-            alert_id: alertId,
-            contact_id: contact.id,
-            notification_type: "sms",
-            status: "sent",
-            sent_at: new Date().toISOString(),
-          });
-
-          results.push({ contact: contact.name, success: true, sid: twilioData.sid });
+          // Log failure
+          try {
+            await supabase.from("notification_logs").insert({
+              alert_id: alertId,
+              contact_id: contact.id,
+              notification_type: "sms",
+              status: "failed",
+              error_message: twilioData.message
+            });
+          } catch (logErr) {
+            console.warn("Could not write to notification_logs table");
+          }
         }
-      } catch (e: unknown) {
-        const errorMessage = e instanceof Error ? e.message : "Unknown error";
-        console.error(`Error sending to ${contact.name}:`, e);
-        results.push({ contact: contact.name, success: false, error: errorMessage });
+      } catch (err) {
+        console.error(`Error sending to ${contact.name}:`, err);
+        results.push({ name: contact.name, success: false, error: "Network error" });
       }
     }
 
     const successCount = results.filter(r => r.success).length;
-    console.log(`SMS sending complete: ${successCount}/${contacts.length} successful`);
+    return new Response(JSON.stringify({ 
+      success: successCount > 0, 
+      successCount, 
+      totalContacts: contacts.length,
+      results 
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
 
-    return new Response(
-      JSON.stringify({ 
-        success: successCount > 0,
-        totalContacts: contacts.length,
-        successCount,
-        results,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error("Error in send-emergency-sms:", error);
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  } catch (error: any) {
+    console.error("Critical Error:", error.message);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
   }
 });

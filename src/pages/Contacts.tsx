@@ -13,6 +13,7 @@ interface EmergencyContact {
   email?: string;
   relationship?: string;
   is_primary: boolean;
+  is_enabled?: boolean;
 }
 
 const MAX_CONTACTS = 3;
@@ -69,10 +70,10 @@ const Contacts = () => {
       }
       setEditingContact(null);
     } else {
-      // Add new contact
+      // Add new contact with is_enabled defaulting to true
       const { error } = await supabase
         .from("emergency_contacts")
-        .insert({ ...contact, user_id: user.id });
+        .insert({ ...contact, user_id: user.id, is_enabled: true });
 
       if (error) {
         toast({ title: "Error", description: "Failed to add contact", variant: "destructive" });
@@ -121,12 +122,32 @@ const Contacts = () => {
     }
   };
 
+  const handleToggleEnabled = async (id: string, enabled: boolean) => {
+    const { error } = await supabase
+      .from("emergency_contacts")
+      .update({ is_enabled: enabled })
+      .eq("id", id);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to update contact", variant: "destructive" });
+    } else {
+      toast({ 
+        title: enabled ? "Contact Enabled" : "Contact Disabled", 
+        description: enabled 
+          ? "This contact will receive emergency alerts" 
+          : "This contact will NOT receive emergency alerts"
+      });
+      fetchContacts();
+    }
+  };
+
   const handleEditContact = (contact: EmergencyContact) => {
     setEditingContact(contact);
     setShowAddDialog(true);
   };
 
   const canAddMore = contacts.length < MAX_CONTACTS;
+  const enabledCount = contacts.filter(c => c.is_enabled !== false).length;
 
   return (
     <div className="space-y-6">
@@ -138,7 +159,7 @@ const Contacts = () => {
           <div>
             <h2 className="font-display text-xl font-bold text-foreground">Emergency Contacts</h2>
             <p className="text-xs text-muted-foreground">
-              {contacts.length}/{MAX_CONTACTS} contacts added
+              {enabledCount} active • {contacts.length}/{MAX_CONTACTS} contacts
             </p>
           </div>
         </div>
@@ -155,6 +176,15 @@ const Contacts = () => {
           Add
         </Button>
       </div>
+
+      {/* Warning if no contacts enabled */}
+      {contacts.length > 0 && enabledCount === 0 && (
+        <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20 text-center">
+          <p className="text-sm text-orange-600">
+            ⚠️ No contacts are enabled. SOS alerts won't be sent to anyone.
+          </p>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-4">
@@ -185,6 +215,7 @@ const Contacts = () => {
               onEdit={handleEditContact}
               onDelete={handleDeleteContact}
               onSetPrimary={handleSetPrimary}
+              onToggleEnabled={handleToggleEnabled}
             />
           ))}
 

@@ -14,16 +14,20 @@ const fetchAddressFromEdgeFunction = async (
   latitude: number,
   longitude: number
 ): Promise<string | null> => {
-  const { data, error } = await supabase.functions.invoke("reverse-geocode", {
-    body: { latitude, longitude },
-  });
+  try {
+    const { data, error } = await supabase.functions.invoke("reverse-geocode", {
+      body: { latitude, longitude },
+    });
 
-  if (error) {
-    console.error("Edge function error:", error);
+    if (error) {
+      // Silently fail - geocoding is optional
+      return null;
+    }
+
+    return data?.address || null;
+  } catch {
     return null;
   }
-
-  return data?.address || null;
 };
 
 export const useReverseGeocode = (

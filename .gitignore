@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Backup folders
+android_backup/
+
+# Environment files
+.env
+.env.*

@@ -8,16 +8,16 @@ interface SmartRecordingState {
 }
 
 interface UseSmartRecordingOptions {
-  maxDuration?: number; // Maximum recording duration in seconds (default: 180 = 3 min)
-  silenceThreshold?: number; // Audio level below which is considered silence (default: 0.03 - adjusted for mobile mics)
-  silenceTimeout?: number; // Seconds of silence before auto-stop (default: 30)
+  maxDuration?: number; // Maximum recording duration in seconds
+  silenceThreshold?: number; // Audio level below which is considered silence
+  silenceTimeout?: number; // Seconds of silence before auto-stop
   onRecordingComplete?: (audioBlob: Blob, duration: number) => void;
   onSilenceDetected?: () => void;
 }
 
 export const useSmartRecording = ({
-  maxDuration = 180,
-  silenceThreshold = 0.03, // Increased for mobile microphones that pick up more ambient noise
+  maxDuration = 300, // Default to 5 minutes as requested
+  silenceThreshold = 0.03,
   silenceTimeout = 30,
   onRecordingComplete,
   onSilenceDetected,
@@ -39,6 +39,15 @@ export const useSmartRecording = ({
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const silenceCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Use a ref for the callback to avoid stale closures
+  const onCompleteRef = useRef(onRecordingComplete);
+  const onSilenceRef = useRef(onSilenceDetected);
+
+  useEffect(() => {
+    onCompleteRef.current = onRecordingComplete;
+    onSilenceRef.current = onSilenceDetected;
+  }, [onRecordingComplete, onSilenceDetected]);
+
   const cleanup = useCallback(() => {
     if (durationIntervalRef.current) {
       clearInterval(durationIntervalRef.current);
@@ -48,12 +57,12 @@ export const useSmartRecording = ({
       clearInterval(silenceCheckIntervalRef.current);
       silenceCheckIntervalRef.current = null;
     }
-    if (audioContextRef.current) {
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
     analyserRef.current = null;
@@ -61,14 +70,21 @@ export const useSmartRecording = ({
   }, []);
 
   const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+    console.log("Stopping recording...");
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
       mediaRecorderRef.current.stop();
+    } else {
+      cleanup();
+      setState((prev) => ({ ...prev, isRecording: false }));
     }
-    cleanup();
   }, [cleanup]);
 
   const startRecording = useCallback(async () => {
     try {
+      console.log("Starting recording process...");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -82,18 +98,23 @@ export const useSmartRecording = ({
       // Set up audio analysis for silence detection
       const audioContext = new AudioContext();
       audioContextRef.current = audioContext;
-      
+
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      // Set up media recorder
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4",
-      });
+      // Determine supported mime type
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "audio/aac";
 
+      console.log(`Using mimeType: ${mimeType}`);
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       chunksRef.current = [];
       startTimeRef.current = Date.now();
 
@@ -104,15 +125,18 @@ export const useSmartRecording = ({
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType });
-        const finalDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
-        
-        setState(prev => ({ ...prev, isRecording: false }));
-        
-        if (onRecordingComplete) {
-          onRecordingComplete(blob, finalDuration);
+        console.log("MediaRecorder stopped, processing blob...");
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        const finalDuration = Math.floor(
+          (Date.now() - startTimeRef.current) / 1000
+        );
+
+        setState((prev) => ({ ...prev, isRecording: false }));
+
+        if (onCompleteRef.current) {
+          onCompleteRef.current(blob, finalDuration);
         }
-        
+
         cleanup();
       };
 
@@ -122,73 +146,77 @@ export const useSmartRecording = ({
       // Duration tracking
       durationIntervalRef.current = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-        setState(prev => ({ ...prev, duration: elapsed }));
+        setState((prev) => ({ ...prev, duration: elapsed }));
 
-        // Auto-stop at max duration
         if (elapsed >= maxDuration) {
-          console.log("Max duration reached, stopping recording");
+          console.log("Max duration reached (5 mins), stopping...");
           stopRecording();
         }
       }, 1000);
 
       // Silence detection
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      let hasHadSound = false; // Track if we've detected sound at least once
-      
+      let hasHadSound = false;
+
       silenceCheckIntervalRef.current = setInterval(() => {
         if (!analyserRef.current) return;
 
         analyserRef.current.getByteFrequencyData(dataArray);
-        
-        // Calculate average volume
-        const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-        const normalizedLevel = average / 255;
-        
-        const isSilent = normalizedLevel < silenceThreshold;
-        
-        // Log audio level periodically for debugging
-        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-        if (elapsed % 2 === 0) {
-          console.log(`Audio level: ${normalizedLevel.toFixed(4)}, threshold: ${silenceThreshold}, silent: ${isSilent}`);
+
+        let sum = 0;
+        let count = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          if (dataArray[i] > 0) {
+            sum += dataArray[i];
+            count++;
+          }
         }
-        
-        // Mark that we've detected sound at some point
+        const average = count > 0 ? sum / count : 0;
+        const normalizedLevel = average / 255;
+
+        const isSilent = normalizedLevel < silenceThreshold;
+        const now = Date.now();
+
         if (!isSilent) {
           hasHadSound = true;
         }
-        
+
         if (isSilent) {
           if (!silenceStartRef.current) {
-            silenceStartRef.current = Date.now();
+            silenceStartRef.current = now;
           }
-          
-          const silenceDuration = Math.floor((Date.now() - silenceStartRef.current) / 1000);
-          
-          setState(prev => ({ 
-            ...prev, 
-            isSilent: true, 
-            silenceDuration 
+
+          const silenceDuration = Math.floor(
+            (now - silenceStartRef.current) / 1000
+          );
+          const elapsed = Math.floor((now - startTimeRef.current) / 1000);
+
+          // Auto-stop if silent for 30s after at least 10s of recording
+          const shouldStop =
+            hasHadSound && silenceDuration >= silenceTimeout && elapsed >= 10;
+
+          setState((prev) => ({
+            ...prev,
+            isSilent: true,
+            silenceDuration,
           }));
 
-          // Auto-stop after extended silence (only if we've had some sound first, or after initial grace period)
-          const shouldStop = silenceDuration >= silenceTimeout && (hasHadSound || elapsed >= 15);
-          
           if (shouldStop) {
-            console.log(`Extended silence detected (${silenceDuration}s), stopping recording. Had sound: ${hasHadSound}`);
-            if (onSilenceDetected) {
-              onSilenceDetected();
+            console.log("Silence timeout reached, stopping...");
+            if (onSilenceRef.current) {
+              onSilenceRef.current();
             }
             stopRecording();
           }
         } else {
           silenceStartRef.current = null;
-          setState(prev => ({ 
-            ...prev, 
-            isSilent: false, 
-            silenceDuration: 0 
+          setState((prev) => ({
+            ...prev,
+            isSilent: false,
+            silenceDuration: 0,
           }));
         }
-      }, 200);
+      }, 500);
 
       setState({
         isRecording: true,
@@ -196,25 +224,21 @@ export const useSmartRecording = ({
         isSilent: false,
         silenceDuration: 0,
       });
-
     } catch (error) {
       console.error("Error starting smart recording:", error);
       cleanup();
       throw error;
     }
-  }, [maxDuration, silenceThreshold, silenceTimeout, onRecordingComplete, onSilenceDetected, cleanup, stopRecording]);
+  }, [maxDuration, silenceThreshold, silenceTimeout, cleanup, stopRecording]);
 
-  // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      cleanup();
-    };
+    return () => cleanup();
   }, [cleanup]);
 
   const getAudioBase64 = useCallback(async (): Promise<string | null> => {
     if (chunksRef.current.length === 0) return null;
-    
-    const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+
+    const blob = new Blob(chunksRef.current, { type: mediaRecorderRef.current?.mimeType });
     const buffer = await blob.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     let binary = "";

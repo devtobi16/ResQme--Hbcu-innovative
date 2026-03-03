@@ -26,124 +26,61 @@ interface AddContactDialogProps {
   };
 }
 
-export const AddContactDialog = ({
-  open,
-  onOpenChange,
-  onSave,
-  initialData,
-}: AddContactDialogProps) => {
+export const AddContactDialog = ({ open, onOpenChange, onSave, initialData }: AddContactDialogProps) => {
   const [name, setName] = useState(initialData?.name || "");
   const [phone, setPhone] = useState(initialData?.phone_number || "");
-  const [email, setEmail] = useState(initialData?.email || "");
-  const [relationship, setRelationship] = useState(initialData?.relationship || "");
   const [isPrimary, setIsPrimary] = useState(initialData?.is_primary || false);
 
   const handleSave = () => {
     if (!name || !phone) return;
     
+    // Clean phone number: keep only digits
+    let digits = phone.replace(/\D/g, "");
+    let finalPhone = phone;
+
+    // USA Logic: If 10 digits, add +1. If 11 digits starting with 1, add +.
+    if (digits.length === 10) {
+      finalPhone = `+1${digits}`;
+    } else if (digits.length === 11 && digits.startsWith("1")) {
+      finalPhone = `+${digits}`;
+    } else if (!phone.startsWith("+")) {
+      finalPhone = `+${digits}`;
+    }
+
     onSave({
       name,
-      phone_number: phone,
-      email: email || undefined,
-      relationship: relationship || undefined,
+      phone_number: finalPhone,
       is_primary: isPrimary,
     });
 
-    // Reset form
-    setName("");
-    setPhone("");
-    setEmail("");
-    setRelationship("");
-    setIsPrimary(false);
     onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-card border-border/50 sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="font-display flex items-center gap-2">
-            <UserPlus className="w-5 h-5 text-secondary" />
+          <DialogTitle className="flex items-center gap-2">
+            <UserPlus className="w-5 h-5" />
             {initialData ? "Edit Contact" : "Add Emergency Contact"}
           </DialogTitle>
         </DialogHeader>
-
-        <div className="space-y-4 mt-4">
+        <div className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name *</Label>
-            <Input
-              id="name"
-              placeholder="John Doe"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="bg-muted/50 border-border/50"
-            />
+            <Label>Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full Name" />
           </div>
-
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone Number *</Label>
-            <Input
-              id="phone"
-              type="tel"
-              placeholder="+1 (555) 123-4567"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="bg-muted/50 border-border/50"
-            />
+            <Label>Phone Number</Label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 000-0000" type="tel" />
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="email">Email (optional)</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="john@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="bg-muted/50 border-border/50"
-            />
+          <div className="flex items-center justify-between">
+            <Label>Primary Contact</Label>
+            <Switch checked={isPrimary} onCheckedChange={setIsPrimary} />
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="relationship">Relationship (optional)</Label>
-            <Input
-              id="relationship"
-              placeholder="e.g., Spouse, Parent, Friend"
-              value={relationship}
-              onChange={(e) => setRelationship(e.target.value)}
-              className="bg-muted/50 border-border/50"
-            />
-          </div>
-
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <Label htmlFor="primary">Primary Contact</Label>
-              <p className="text-xs text-muted-foreground">
-                Notified first during emergencies
-              </p>
-            </div>
-            <Switch
-              id="primary"
-              checked={isPrimary}
-              onCheckedChange={setIsPrimary}
-            />
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="flex-1 bg-secondary hover:bg-secondary/90"
-              onClick={handleSave}
-              disabled={!name || !phone}
-            >
-              {initialData ? "Update" : "Add Contact"}
-            </Button>
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button className="flex-1" onClick={handleSave}>Save</Button>
           </div>
         </div>
       </DialogContent>

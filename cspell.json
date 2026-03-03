@@ -1,0 +1,6 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": ["apikey", "supabase", "Supabase", "SUPABASE"],
+  "ignorePaths": ["node_modules", "dist", "android_backup", "*.lock", "*.log"]
+}

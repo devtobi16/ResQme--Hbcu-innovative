@@ -8,9 +8,7 @@ import { Navigation } from "@/components/Navigation";
 import { ActiveAlertBanner } from "@/components/ActiveAlertBanner";
 import { CancelCountdown } from "@/components/CancelCountdown";
 import { VoiceCommandIndicator } from "@/components/VoiceCommandIndicator";
-import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { SummaryReviewDialog } from "@/components/SummaryReviewDialog";
-import { pendingSosKey } from "@/components/NativeSOSTriggerListener";
 import { Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSmartRecording } from "@/hooks/useSmartRecording";
@@ -19,7 +17,6 @@ import { useHybridAlert } from "@/hooks/useHybridAlert";
 import { useVolumeButtonTrigger } from "@/hooks/useVolumeButtonTrigger";
 import { useWakeWordTrigger } from "@/hooks/useWakeWordTrigger";
 import { useSpeechTranscription } from "@/hooks/useSpeechTranscription";
-import { reverseGeocode } from "@/hooks/useReverseGeocode";
 
 import { AlertHistory } from "@/components/AlertHistory";
 
@@ -34,20 +31,12 @@ const Index = () => {
   const [showCancelWindow, setShowCancelWindow] = useState(false);
   const [location, setLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [alertStartTime, setAlertStartTime] = useState<Date | null>(null);
-  const [currentAlertId, setCurrentAlertId] = useState<string | null>(null);
-  const [user, setUser] = useState<any>(null);
-  const [triggerType, setTriggerType] = useState<"button" | "voice">("button");
-
-  const pendingRecordingRef = useRef<
-    | {
-        audioBase64: string;
-        audioMimeType?: string;
-        transcript?: string;
-        location: { lat: number; lng: number } | null;
-      }
-    | null
-  >(null);
+  const [recordingFailed, setRecordingFailed] = useState(false);
   
+  const alertIdRef = useRef<string | null>(null);
+  const [user, setUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<{ full_name: string | null }>({ full_name: null });
+
   // Settings state
   const [wakeWord, setWakeWord] = useState("resqme");
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
@@ -57,18 +46,13 @@ const Index = () => {
   const { toast } = useToast();
 
   const {
-    isSupported: transcriptionSupported,
     isListening: isTranscribing,
     transcript: transcription,
     startListening: startTranscribing,
     stopListening: stopTranscribing,
     reset: resetTranscription,
   } = useSpeechTranscription();
-  
-  // Get user profile for name
-  const [userProfile, setUserProfile] = useState<{ full_name: string | null }>({ full_name: null });
 
-  // Emergency alert processing
   const { 
     isProcessing, 
     isSendingNotifications, 
@@ -82,153 +66,88 @@ const Index = () => {
     onComplete: () => {
       setIsAlertActive(false);
       setAlertStartTime(null);
-      setCurrentAlertId(null);
-      toast({
-        title: "Alert Sent",
-        description: "Emergency contacts have been notified",
-      });
+      setRecordingFailed(false);
+      alertIdRef.current = null;
     },
   });
 
-  // Hybrid alert system (handles offline + native SMS)
   const {
     isOnline,
-    nativeSmsAvailable,
-    pendingAlerts,
     triggerAlert,
-    syncPendingAlerts,
   } = useHybridAlert({
     userId: user?.id || null,
-    userName: userProfile.full_name || user?.email || "Unknown User",
-    onAlertCreated: (alertId) => {
-      setCurrentAlertId(alertId);
-    },
-    onSyncComplete: () => {
-      toast({
-        title: "Sync Complete",
-        description: "Queued alerts have been processed",
-      });
+    userName: userProfile.full_name || user?.email || "User",
+    onAlertCreated: (id) => {
+      alertIdRef.current = id;
     },
   });
 
-  useEffect(() => {
-    if (!currentAlertId || !user || !pendingRecordingRef.current) return;
-
-    const pending = pendingRecordingRef.current;
-    pendingRecordingRef.current = null;
-
-    processEmergency(
-      pending.audioBase64,
-      currentAlertId,
-      user.id,
-      pending.location,
-      pending.audioMimeType,
-      pending.transcript
-    );
-  }, [currentAlertId, user, processEmergency]);
-
-  // Smart recording with silence detection
+  // This is called when recording completes (silence detection or max duration)
   const handleRecordingComplete = useCallback(async (audioBlob: Blob, duration: number) => {
-    if (!user) return;
-
-    console.log(`Recording complete: ${duration}s`);
-
-    // Stop speech transcription once we have audio
-    if (isTranscribing) stopTranscribing();
-
-    const transcriptText = transcription?.trim() || undefined;
-
-    // Convert to base64 for backend function
-    const buffer = await audioBlob.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    let binary = "";
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const audioBase64 = btoa(binary);
-    const audioMimeType = audioBlob.type || undefined;
-
-    // If the alert row hasn't been created yet, store the recording and process once we have an alert id.
-    if (!currentAlertId) {
-      pendingRecordingRef.current = {
-        audioBase64,
-        audioMimeType,
-        transcript: transcriptText,
-        location,
-      };
-
-      toast({
-        title: "Audio Captured",
-        description: "Finalizing alert setup, then uploading your recording...",
-      });
+    console.log("Recording complete! Duration:", duration, "Blob size:", audioBlob.size);
+    
+    if (!user || !alertIdRef.current) {
+      console.error("Missing user or alertId for processing");
       return;
     }
 
-    // Process the emergency
-    await processEmergency(audioBase64, currentAlertId, user.id, location, audioMimeType, transcriptText);
-  }, [currentAlertId, user, location, processEmergency, toast, transcription, isTranscribing, stopTranscribing]);
+    const transcriptText = transcription?.trim() || undefined;
+    
+    // Convert blob to base64
+    const reader = new FileReader();
+    reader.readAsDataURL(audioBlob);
+    reader.onloadend = async () => {
+      const base64data = reader.result as string;
+      const audioBase64 = base64data.split(",")[1];
+      
+      console.log("Sending audio for analysis...");
+      await processEmergency(
+        audioBase64, 
+        alertIdRef.current!, 
+        user.id, 
+        location, 
+        audioBlob.type, 
+        transcriptText
+      );
+    };
+  }, [user, location, transcription, processEmergency]);
 
   const { 
     isRecording, 
-    duration: recordingDuration,
-    isSilent,
-    silenceDuration,
+    duration: recordingDuration, 
+    silenceDuration, 
     startRecording, 
-    stopRecording,
+    stopRecording 
   } = useSmartRecording({
     maxDuration: MAX_RECORDING_DURATION,
-    silenceTimeout: 30, // Stop after 30 seconds of silence
+    silenceTimeout: 10, // Auto-stop after 10 seconds of silence
     onRecordingComplete: handleRecordingComplete,
-    onSilenceDetected: () => {
-      toast({
-        title: "Recording Stopped",
-        description: "Extended silence detected. Processing alert...",
-      });
-    },
   });
 
-  // Hardware trigger handler (volume buttons and wake word)
+  // Location tracking
+  useEffect(() => {
+    if (navigator.geolocation) {
+      const watchId = navigator.geolocation.watchPosition(
+        (pos) => setLocation({ 
+          lat: pos.coords.latitude, 
+          lng: pos.coords.longitude, 
+          accuracy: pos.coords.accuracy 
+        }),
+        (err) => console.error("Location error:", err),
+        { enableHighAccuracy: true, maximumAge: 5000 }
+      );
+      return () => navigator.geolocation.clearWatch(watchId);
+    }
+  }, []);
+
   const handleHardwareTrigger = useCallback(() => {
     if (!isAlertActive && !showCancelWindow) {
-      setTriggerType("voice");
       setShowCancelWindow(true);
     }
   }, [isAlertActive, showCancelWindow]);
 
-  // If a native trigger arrived while we were on another route (e.g. /auth),
-  // consume the persisted "pending" flag and open the cancel window.
-  useEffect(() => {
-    if (!user) return;
-
-    const pending = (() => {
-      try {
-        return localStorage.getItem(pendingSosKey);
-      } catch {
-        return null;
-      }
-    })();
-
-    if (!pending) return;
-
-    try {
-      localStorage.removeItem(pendingSosKey);
-    } catch {
-      // ignore
-    }
-
-    handleHardwareTrigger();
-  }, [user, handleHardwareTrigger]);
-
-  // Also respond immediately when the trigger happens while this screen is mounted.
-  useEffect(() => {
-    const onNativeTrigger = () => handleHardwareTrigger();
-    window.addEventListener("resqme:sos-trigger", onNativeTrigger);
-    return () => window.removeEventListener("resqme:sos-trigger", onNativeTrigger);
-  }, [handleHardwareTrigger]);
-
-  // Volume button trigger (Android only via Capacitor)
+  // Volume button trigger
   const { 
-    isSupported: volumeButtonSupported,
     isBackgroundActive,
     startBackgroundProtection,
     stopBackgroundProtection,
@@ -237,25 +156,7 @@ const Index = () => {
     enabled: isVolumeButtonEnabled && !isAlertActive && !showCancelWindow,
   });
 
-  // Handle volume button enable/disable - explicitly control the background service
-  const handleVolumeButtonEnabledChange = useCallback(async (enabled: boolean) => {
-    setIsVolumeButtonEnabled(enabled);
-    if (enabled) {
-      await startBackgroundProtection();
-      toast({
-        title: "Background Protection Enabled",
-        description: "Volume buttons will work even when the app is closed",
-      });
-    } else {
-      await stopBackgroundProtection();
-      toast({
-        title: "Background Protection Disabled",
-        description: "Volume button trigger requires the app to be open",
-      });
-    }
-  }, [startBackgroundProtection, stopBackgroundProtection, toast]);
-
-  // Wake word trigger (background voice detection)
+  // Wake word trigger
   const {
     isSupported: wakeWordSupported,
     isListening: isWakeWordListening,
@@ -269,194 +170,138 @@ const Index = () => {
     wakeWord,
   });
 
-  // Handle wake word changes from settings
-  const handleWakeWordChange = useCallback(async (newWord: string) => {
-    setWakeWord(newWord);
-    await updateWakeWord(newWord);
-  }, [updateWakeWord]);
-
-  // Handle voice enable/disable
-  const handleVoiceEnabledChange = useCallback(async (enabled: boolean) => {
-    setIsVoiceEnabled(enabled);
-    if (enabled) {
-      await startWakeWord();
-    } else {
-      await stopWakeWord();
-    }
-  }, [startWakeWord, stopWakeWord]);
-
-  // Auth check
+  // Native SOS trigger listener
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate("/auth");
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      if (!session) {
-        navigate("/auth");
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  // Location tracking
-  useEffect(() => {
-    if (navigator.geolocation) {
-      const watchId = navigator.geolocation.watchPosition(
-        (pos) => setLocation({ 
-          lat: pos.coords.latitude, 
-          lng: pos.coords.longitude, 
-          accuracy: pos.coords.accuracy 
-        }),
-        () => toast({ 
-          title: "Location access needed", 
-          description: "Please enable location for emergency features", 
-          variant: "destructive" 
-        }),
-        { enableHighAccuracy: true, maximumAge: 5000 }
-      );
-
-      return () => navigator.geolocation.clearWatch(watchId);
-    }
-  }, [toast]);
-
-  // Sync is now handled by useHybridAlert hook automatically
-
-  // Fetch user profile for name
-  useEffect(() => {
-    if (user?.id) {
-      supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("user_id", user.id)
-        .single()
-        .then(({ data }) => {
-          if (data) setUserProfile(data);
-        });
-    }
-  }, [user?.id]);
-
-  const handleSOSTrigger = () => {
-    if (isAlertActive) {
-      cancelAlert();
-      return;
-    }
-
-    setTriggerType("button");
-    setShowCancelWindow(true);
-  };
+    const onNativeTrigger = () => handleHardwareTrigger();
+    window.addEventListener("resqme:sos-trigger", onNativeTrigger);
+    return () => window.removeEventListener("resqme:sos-trigger", onNativeTrigger);
+  }, [handleHardwareTrigger]);
 
   const activateAlert = async () => {
     setShowCancelWindow(false);
     setIsAlertActive(true);
     setAlertStartTime(new Date());
-
+    setRecordingFailed(false);
     resetTranscription();
 
-    // Start audio recording
-    try {
-      await startRecording();
-      if (transcriptionSupported) startTranscribing();
-    } catch (e) {
-      console.error("Failed to start recording:", e);
-    }
-
-    // Use hybrid alert system - handles both online and offline cases
+    // Create the alert in database first
     const alertId = await triggerAlert(location);
-    
     if (alertId) {
-      setCurrentAlertId(alertId);
+      alertIdRef.current = alertId;
+      console.log("Alert created:", alertId);
     }
 
-    toast({ 
-      title: "🚨 Emergency Alert Activated", 
-      description: isOnline 
-        ? "Sharing location and recording audio" 
-        : nativeSmsAvailable 
-          ? "SMS sent to contacts. Full analysis when online."
-          : "Alert cached. Will send when connection restored.",
-      variant: "destructive" 
-    });
-  };
-
-
-  const cancelAlert = async () => {
-    setIsAlertActive(false);
-    setAlertStartTime(null);
-
-    stopTranscribing();
-    resetTranscription();
-
-    stopRecording();
-    resetEmergencyAlert();
-
-    if (currentAlertId) {
-      await supabase
-        .from("alerts")
-        .update({ status: "resolved", resolved_at: new Date().toISOString() })
-        .eq("id", currentAlertId);
-      setCurrentAlertId(null);
+    // Start recording with proper error handling
+    try {
+      console.log("Starting audio recording...");
+      await startRecording();
+      startTranscribing();
+      toast({ 
+        title: "🚨 SOS ACTIVATED", 
+        description: "Recording audio... Speak now or stay silent for 10s to auto-stop.",
+        variant: "destructive" 
+      });
+    } catch (e: any) {
+      console.error("Recording failed:", e);
+      setRecordingFailed(true);
+      toast({ 
+        title: "⚠️ Microphone Error", 
+        description: "Could not access microphone. Alert will be sent without audio.",
+        variant: "destructive" 
+      });
     }
-
-    toast({ title: "Alert Cancelled", description: "Emergency alert has been deactivated" });
   };
 
-  const handleApproveSummary = async (editedSummary: string) => {
-    await approveAndSend(editedSummary);
-  };
-
-  const handleCancelSummary = async () => {
-    await cancelSending();
-    setIsAlertActive(false);
-    setAlertStartTime(null);
-    setCurrentAlertId(null);
-  };
-
-  const handleCancelCountdown = () => {
-    setShowCancelWindow(false);
-    toast({ title: "Alert Cancelled", description: "False alarm prevented" });
-  };
-
-  const toggleVoiceListening = async () => {
-    console.log("toggleVoiceListening called. Current state:", isWakeWordListening, "Supported:", wakeWordSupported);
-    if (isWakeWordListening) {
-      await stopWakeWord();
-      toast({ title: "Voice Command Off", description: "Wake word detection stopped" });
+  // Stop recording and trigger processing
+  const handleStopAndSend = useCallback(() => {
+    console.log("User pressed Stop & Send");
+    if (isRecording) {
+      stopRecording(); // This will trigger onRecordingComplete
     } else {
-      await startWakeWord();
-      toast({ title: "Voice Command On", description: `Listening for "${currentWakeWord} help"` });
+      // Recording already stopped or failed, process without audio
+      if (alertIdRef.current && user) {
+        processEmergency(
+          "", // Empty audio
+          alertIdRef.current,
+          user.id,
+          location,
+          "audio/webm",
+          transcription?.trim() || undefined
+        );
+      }
     }
+    stopTranscribing();
+  }, [isRecording, stopRecording, stopTranscribing, processEmergency, user, location, transcription]);
+
+  // Cancel without sending
+  const cancelAlert = async () => {
+    stopRecording();
+    stopTranscribing();
+    setIsAlertActive(false);
+    setAlertStartTime(null);
+    setRecordingFailed(false);
+    
+    if (alertIdRef.current) {
+      await supabase.from("alerts").update({ 
+        status: "cancelled", 
+        resolved_at: new Date().toISOString()
+      }).eq("id", alertIdRef.current);
+    }
+    
+    alertIdRef.current = null;
+    resetEmergencyAlert();
+    toast({ title: "Alert Cancelled", description: "No notifications were sent." });
   };
+
+  const handleApproveSummary = (editedSummary: string) => {
+    approveAndSend(editedSummary);
+  };
+
+  const handleCancelSummary = () => {
+    cancelSending();
+    setIsAlertActive(false);
+    setRecordingFailed(false);
+    alertIdRef.current = null;
+  };
+
+  // Auth check
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) navigate("/auth");
+      else setUser(session.user);
+    });
+  }, [navigate]);
+
+  // Load user profile
+  useEffect(() => {
+    if (user?.id) {
+      supabase.from("profiles").select("full_name").eq("user_id", user.id).single()
+        .then(({ data }) => { if (data) setUserProfile(data); });
+    }
+  }, [user?.id]);
 
   if (!user) return null;
 
   return (
     <div className="min-h-screen pb-24">
       {showCancelWindow && (
-        <CancelCountdown
-          duration={5}
-          onComplete={activateAlert}
-          onCancel={handleCancelCountdown}
+        <CancelCountdown 
+          duration={5} 
+          onComplete={activateAlert} 
+          onCancel={() => setShowCancelWindow(false)} 
         />
       )}
-
-      <OfflineIndicator isOnline={isOnline} pendingCount={pendingAlerts.length} />
-
-      {isAlertActive && alertStartTime && currentAlertId && !isAwaitingApproval && (
+      
+      {isAlertActive && alertStartTime && alertIdRef.current && !isAwaitingApproval && (
         <ActiveAlertBanner
-          alertId={currentAlertId}
+          alertId={alertIdRef.current}
           startedAt={alertStartTime}
           isRecording={isRecording}
+          recordingFailed={recordingFailed}
           recordingDuration={recordingDuration}
           maxRecordingDuration={MAX_RECORDING_DURATION}
           silenceDuration={silenceDuration}
+          onStopAndSend={handleStopAndSend}
           onCancel={cancelAlert}
         />
       )}
@@ -469,7 +314,7 @@ const Index = () => {
         onCancel={handleCancelSummary}
       />
 
-      <div className={`px-4 py-6 max-w-lg mx-auto ${isAlertActive ? "pt-32" : !isOnline ? "pt-20" : ""}`}>
+      <div className={`px-4 py-6 max-w-lg mx-auto ${isAlertActive ? "pt-40" : ""}`}>
         {activeTab === "home" && (
           <>
             <header className="flex items-center justify-between mb-8">
@@ -478,16 +323,16 @@ const Index = () => {
                   <Shield className="w-5 h-5 text-secondary" />
                 </div>
                 <div>
-                  <h1 className="font-display text-xl font-bold text-foreground">ResQMe</h1>
-                  <p className="text-xs text-muted-foreground">Your safety companion</p>
+                  <h1 className="font-display text-xl font-bold">ResQ Me</h1>
+                  <p className="text-xs text-muted-foreground">Safety companion</p>
                 </div>
               </div>
 
               <VoiceCommandIndicator
                 isListening={isWakeWordListening}
                 isSupported={wakeWordSupported}
-                onToggle={toggleVoiceListening}
-                transcript={`Listening for "${currentWakeWord}"`}
+                onToggle={async () => isWakeWordListening ? await stopWakeWord() : await startWakeWord()}
+                transcript={`Say "${currentWakeWord} help"`}
               />
             </header>
 
@@ -499,45 +344,34 @@ const Index = () => {
 
             <div className="flex items-center justify-center my-12">
               <SOSButton 
-                onTrigger={handleSOSTrigger} 
+                onTrigger={() => isAlertActive ? handleStopAndSend() : setShowCancelWindow(true)} 
                 isActive={isAlertActive} 
                 isRecording={isRecording} 
               />
             </div>
 
-            <LocationCard
-              latitude={location?.lat || null}
-              longitude={location?.lng || null}
-              accuracy={location?.accuracy || null}
-              isTracking={isAlertActive}
+            <LocationCard 
+              latitude={location?.lat || null} 
+              longitude={location?.lng || null} 
+              accuracy={location?.accuracy || null} 
+              isTracking={isAlertActive} 
             />
-
           </>
         )}
 
-        {activeTab === "contacts" && (
-          <Suspense fallback={<div className="h-64 flex items-center justify-center text-muted-foreground">Loading...</div>}>
-            <Contacts />
-          </Suspense>
-        )}
-
-        {activeTab === "history" && (
-          <AlertHistory />
-        )}
-
-        {activeTab === "settings" && (
-          <Suspense fallback={<div className="h-64 flex items-center justify-center text-muted-foreground">Loading...</div>}>
-            <Settings
-              wakeWord={wakeWord}
-              onWakeWordChange={handleWakeWordChange}
-              isVoiceEnabled={isVoiceEnabled}
-              onVoiceEnabledChange={handleVoiceEnabledChange}
-              isVolumeButtonEnabled={isVolumeButtonEnabled}
-              onVolumeButtonEnabledChange={handleVolumeButtonEnabledChange}
-              isBackgroundServiceActive={isBackgroundActive}
-            />
-          </Suspense>
-        )}
+        {activeTab === "history" && <AlertHistory />}
+        {activeTab === "contacts" && <Suspense fallback={<div>Loading...</div>}><Contacts /></Suspense>}
+        {activeTab === "settings" && <Suspense fallback={<div>Loading...</div>}>
+          <Settings 
+            wakeWord={wakeWord} 
+            onWakeWordChange={async (w) => { setWakeWord(w); await updateWakeWord(w); }} 
+            isVoiceEnabled={isVoiceEnabled} 
+            onVoiceEnabledChange={async (e) => { setIsVoiceEnabled(e); e ? await startWakeWord() : await stopWakeWord(); }} 
+            isVolumeButtonEnabled={isVolumeButtonEnabled} 
+            onVolumeButtonEnabledChange={async (e) => { setIsVolumeButtonEnabled(e); e ? await startBackgroundProtection() : await stopBackgroundProtection(); }} 
+            isBackgroundServiceActive={isBackgroundActive} 
+          />
+        </Suspense>}
       </div>
 
       <Navigation activeTab={activeTab} onTabChange={setActiveTab} />

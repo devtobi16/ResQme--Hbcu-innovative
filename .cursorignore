@@ -1,0 +1,10 @@
+# Backup folders
+android_backup/
+
+# Build outputs
+node_modules/
+dist/
+build/
+
+# Logs
+*.log

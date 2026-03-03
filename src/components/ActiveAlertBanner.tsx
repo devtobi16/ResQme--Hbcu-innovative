@@ -1,4 +1,4 @@
-import { AlertTriangle, X, Mic, MapPin } from "lucide-react";
+import { AlertTriangle, X, Mic, MapPin, Send, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -8,9 +8,11 @@ interface ActiveAlertBannerProps {
   alertId: string;
   startedAt: Date;
   isRecording: boolean;
+  recordingFailed?: boolean;
   recordingDuration?: number;
   maxRecordingDuration?: number;
   silenceDuration?: number;
+  onStopAndSend: () => void;
   onCancel: () => void;
 }
 
@@ -18,9 +20,11 @@ export const ActiveAlertBanner = ({
   alertId,
   startedAt,
   isRecording,
+  recordingFailed = false,
   recordingDuration = 0,
   maxRecordingDuration = 300,
   silenceDuration = 0,
+  onStopAndSend,
   onCancel,
 }: ActiveAlertBannerProps) => {
   return (
@@ -61,15 +65,30 @@ export const ActiveAlertBanner = ({
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-primary-foreground/80" />
                 <span className="text-xs text-primary-foreground/80">
-                  Location sharing
+                  Location tracking
                 </span>
               </div>
-              {isRecording && (
+              
+              {recordingFailed ? (
+                <div className="flex items-center gap-2">
+                  <MicOff className="w-4 h-4 text-yellow-300" />
+                  <span className="text-xs text-yellow-300">
+                    Mic unavailable
+                  </span>
+                </div>
+              ) : isRecording ? (
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-primary-foreground animate-pulse" />
                   <Mic className="w-4 h-4 text-primary-foreground/80" />
                   <span className="text-xs text-primary-foreground/80">
-                    Recording {silenceDuration > 0 && `(silence: ${silenceDuration}s/30s)`}
+                    Recording {silenceDuration > 0 && `(silence: ${silenceDuration}s/10s)`}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Mic className="w-4 h-4 text-primary-foreground/60" />
+                  <span className="text-xs text-primary-foreground/60">
+                    Recording stopped
                   </span>
                 </div>
               )}
@@ -81,6 +100,15 @@ export const ActiveAlertBanner = ({
                 maxDuration={maxRecordingDuration}
               />
             )}
+
+            {/* Stop and Send button - prominently displayed */}
+            <Button
+              onClick={onStopAndSend}
+              className="w-full bg-primary-foreground text-primary hover:bg-primary-foreground/90 font-bold"
+            >
+              <Send className="w-4 h-4 mr-2" />
+              {isRecording ? "Stop Recording & Send Alert" : "Send Alert Now"}
+            </Button>
           </div>
         </div>
       </div>
