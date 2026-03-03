@@ -1,4 +1,4 @@
-# 🚨 ResQ Me — Personal Emergency Safety App
+#  ResQ Me — Personal Emergency Safety App
 
 **ResQ Me** is an AI-powered personal safety application that enables hands-free emergency alerts with intelligent audio analysis, real-time location sharing, and automated notifications to emergency contacts.
 
@@ -6,48 +6,48 @@
 
 ---
 
-## ✨ Features
+## Features
 
-### 🔴 One-Tap SOS
+### One-Tap SOS
 - Large, accessible SOS button with a **5-second cancel countdown** to prevent accidental triggers
 - Instantly captures location and begins audio recording
 
-### 🎙️ Smart Audio Recording
+###  Smart Audio Recording
 - **Silence detection** — auto-stops recording after 30 seconds of silence
 - **5-minute max duration** with real-time progress tracking
 - Noise suppression and echo cancellation for clear recordings
 
-### 🤖 AI-Powered Emergency Summaries
+###  AI-Powered Emergency Summaries
 - Recorded audio is transcribed via **OpenAI Whisper**
 - AI generates a concise emergency summary describing the situation
 - Users can **review and edit** the summary before it's sent to contacts
 
-### 📲 Emergency Contact Notifications
+###  Emergency Contact Notifications
 - Automated **email alerts** sent to all enabled emergency contacts
 - Includes AI summary, **Google Maps location link**, and reverse-geocoded address
 - Contact management with enable/disable toggles
 
-### 🗣️ Hands-Free Activation
+###  Hands-Free Activation
 - **"Rescue Me" wake word** detection using Porcupine — works in the background
 - **Volume button trigger** — press volume buttons to activate SOS without unlocking your phone
 - App automatically comes to foreground and initiates the SOS sequence
 
-### 📍 Location Services
+###  Location Services
 - Real-time GPS location capture on SOS trigger
 - **Reverse geocoding** for human-readable addresses
 - Location shared with emergency contacts via Google Maps link
 
-### 📶 Offline Support
+###  Offline Support
 - **Offline alert queue** — alerts are saved locally and sent when connectivity is restored
 - Offline data caching for contacts and alert history
 
-### 📊 Alert History & Dashboard
+###  Alert History & Dashboard
 - Full history of past alerts with status tracking
 - Detailed alert view with audio playback, AI summary, location, and notification status
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -155,12 +155,4 @@ npm run android:run     # Deploy to connected device
 
 ---
 
-## 👨‍💻 Author
 
-**Oluwatobiloba Sokoya**
-
----
-
-## 📄 License
-
-This project was built for the HBCU Innovation Challenge.
